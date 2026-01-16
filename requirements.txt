@@ -1,0 +1,11 @@
+alembic==0.8.4
+dataset==0.6.2
+Mako==1.0.3
+MarkupSafe==0.23
+normality==0.2.4
+Pillow==3.1.1
+python-editor==0.5
+PyYAML==3.11
+scandir==1.2
+six==1.10.0
+SQLAlchemy==1.0.12
