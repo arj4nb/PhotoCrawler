@@ -10,10 +10,6 @@ from Utils import *
 from DataBase import *
 
 
-gOutputPath = ""
-gTempPath = ""
-
-
 def main():
     Log = logging.getLogger('myLogger')
     level = logging.getLevelName('WARNING')
@@ -24,20 +20,21 @@ def main():
     userpath = expanduser("~")
 
     global gOutputPath
-    global gTempPath
+    global gTempPath 
     
     from sys import platform as _platform
     if _platform=="win32":
-        userpath = "C:\\users\\arjan\\Pictures\\"
+        userpath = userpath +"\\Pictures\\"
         gOutputPath = "F:\\Photos\\"
         gTempPath = "F:\\Photos\\Temp\\"
     else:
-        gOutputPath = userpath + "/PhotoTest/"
-        gTempPath = userpath + "/Temp/"
+        userpath = os.path.join(userpath, "PhotoTest")
+        gOutputPath = os.path.join(userpath, "PhotoExportTest/")
+        gTempPath = os.path.join(userpath, "Temp/")
            
     #create directories
-    makedir(gOutputPath)
-    makedir(gTempPath)
+    makeSurePathExists(gOutputPath)
+    makeSurePathExists(gTempPath)
 
     print ("Output path set to ", gOutputPath)
     print ("Temporary path set to ", gTempPath) 
@@ -47,7 +44,7 @@ def main():
     #initialize database
     gDb = DataBase(gOutputPath)
 
-    print ("analyzing folder",userpath)
+    print ("Analyzing folder",userpath)
     analyzefolder(userpath, gDb)
 
     gDb.ExportDatabase()

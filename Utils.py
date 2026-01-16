@@ -2,12 +2,12 @@
 import os
 import shutil
 
-gImageExtensions = ('jpg', 'jpeg', 'png', 'tif', 'tiff')
+gImageExtensions = ('jpg', 'jpeg', 'png', 'tif', 'tiff', "gif", 'bmp', 'heic', 'heif')
 gIgnoreFolders = ('__MACOSX', 'Data.noindex', '.Trash', 'Caches', 'Thumbnails', 'com.apple.AddressBook.', 'Library/Containers', 'Application Support')
 
 
 
-def make_sure_path_exists(path):
+def makeSurePathExists(path):
     import errno
     try:
         os.makedirs(path)
@@ -15,8 +15,10 @@ def make_sure_path_exists(path):
         if exception.errno != errno.EEXIST:
             raise
 
-def makedir(path):
-    make_sure_path_exists(path)
+def makeDirectorySafe(path):
+    makeSurePathExists(path)
+
+
 
 
 
