@@ -1,6 +1,7 @@
 import zipfile
 from Utils import *
 import os
+import pathlib
 import settings
 
 def zipTimeConvert(z):
@@ -19,18 +20,21 @@ def extractFileFromZip(zfile, zipentry):
         orgdatetime = zipTimeConvert(zipentry_info)
         orgtime = time.mktime(orgdatetime.timetuple())
 
-        #extract the actual file to Temporary Path
-        zfile.extract(zipentry, settings.gTempPath)
+        zip_crc = zipentry_info.CRC
+        zip_str = str(zip_crc)
+        zip_ext = pathlib.Path(zipentry).suffix
+        crc_path = os.path.join(settings.gTempPath, zip_str) + zip_ext
+        extracted_file_path = os.path.join(settings.gTempPath, zipentry)
 
-        #fix the path
-        zippathfixed = zipentry.replace('/','\\')
-        #get the actual location of the temporary file
-        tempfile = os.path.join(settings.gTempPath, zippathfixed)
-        #set the original time back on the file
-        os.utime(tempfile, (orgtime, orgtime))
+        #TODO: basically testing if file already was extracted. not happy: files with same name but different crc could overwrite eachother
+        if not os.path.isfile(extracted_file_path):
+            #extract the actual file to Temporary Path
+            zfile.extract(zipentry, settings.gTempPath)
+            #set the original time back on the file
+            os.utime(extracted_file_path, (orgtime, orgtime))
 
         #now copy the image to the final location
-        AddPhoto(settings.gTempPath, zippathfixed, time.mktime(orgdatetime.timetuple()))
+        AddPhoto(settings.gTempPath, zipentry, time.mktime(orgdatetime.timetuple()))
 
     except Exception as e:
         print ("zip extract fail", zipentry, ": error", str(e))
@@ -45,7 +49,7 @@ def AnalyzeZip(zipname):
             if not zipentry.endswith('//') and isValidSubDirectory(zipentry) and isImageFile(zipentry):     #not a folder
                 extractFileFromZip(zfile, zipentry)
 
-        zipfile.close()
+        zfile.close()
     except Exception as e:
         print ("zip analyze - error handling zipfile ",zipname, ": error:", str(e))
 

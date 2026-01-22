@@ -5,7 +5,8 @@ import settings
 import time
 from datetime import datetime, timezone
 from DataBase import *
-
+from PIL import Image
+from PIL.ExifTags import TAGS
 
 
 def makeSurePathExists(path):
@@ -19,7 +20,20 @@ def makeSurePathExists(path):
 def makeDirectorySafe(path):
     makeSurePathExists(path)
 
-
+#from Pillow: https://pillow.readthedocs.io/en/stable/handbook/overview.html#image-archives
+def get_date_created(image_path):
+    try:
+        image = Image.open(image_path)
+        exifdata = image._getexif()
+        
+        if exifdata:
+            for tag_id, value in exifdata.items():
+                tag = TAGS.get(tag_id, tag_id)
+                if tag == 'DateTimeOriginal':
+                    return value
+    except Exception as e:
+        print("- error reading EXIF data from ", image_path, ": error", str(e))
+    return None     
 
 
 
