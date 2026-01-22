@@ -18,15 +18,14 @@ class Photo:
 		self.timestamp=in_timestamp
 
 
-"""
+
 class Event:
 	def __init__(self):
-        pass
+		self.name=''
 
 class Album:
 	def __init__(self):
-        pass
-"""
+		self.name=''
 
 
 
@@ -36,7 +35,7 @@ class DataBase:
 
 	def AddPhoto(self, in_name, in_filename, in_timestamp):
 		try:
-			print(in_name, in_timestamp)
+			#print(in_name, in_timestamp)
 			#newphoto = Photo(in_name, in_filename, in_timestamp)
 			table = self.db['photos']
 			table.insert(dict(name=in_name, filename=in_filename, timestamp=in_timestamp))
@@ -54,6 +53,6 @@ class DataBase:
 	def ExportDatabase(self):
 		# export all photos into a single JSON
 		result = self.db['photos'].all()
-		dataset.freeze(result, format='json', filename='photos.json')
-
+		return result
+		#dataset.freeze(result, format='json', filename='photos.json')
 

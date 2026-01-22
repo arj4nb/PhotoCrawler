@@ -5,9 +5,10 @@ import sys
 import logging
 import sqlite3
 import dataset
-from Crawl import analyzefolder
+import settings
 from Utils import *
 from DataBase import *
+import Crawl
 
 
 def main():
@@ -19,35 +20,35 @@ def main():
     from os.path import expanduser
     userpath = expanduser("~")
 
-    global gOutputPath
-    global gTempPath 
-    
+    scanpath = userpath
+
     from sys import platform as _platform
     if _platform=="win32":
-        userpath = userpath +"\\Pictures\\"
-        gOutputPath = "F:\\Photos\\"
+        scanpath = userpath +"\\Pictures\\"
+        settings.gOutputPath = "F:\\Photos\\"
         gTempPath = "F:\\Photos\\Temp\\"
     else:
-        userpath = os.path.join(userpath, "PhotoTest")
-        gOutputPath = os.path.join(userpath, "PhotoExportTest/")
-        gTempPath = os.path.join(userpath, "Temp/")
+        scanpath = os.path.join(userpath, "PhotoTest")
+        settings.gOutputPath = os.path.join(userpath, "PhotoExportTest/")
+        settings.gTempPath = os.path.join(settings.gOutputPath, "Temp/")
            
     #create directories
-    makeSurePathExists(gOutputPath)
-    makeSurePathExists(gTempPath)
-
-    print ("Output path set to ", gOutputPath)
-    print ("Temporary path set to ", gTempPath) 
+    makeSurePathExists(settings.gOutputPath)
+    makeSurePathExists(settings.gTempPath)
 
     print ("Starting Photo Crawler")
+    print ("Output path set to ", settings.gOutputPath)
+    print ("Temporary path set to ", settings.gTempPath) 
+    print ("Analyzing folder", scanpath)
 
     #initialize database
-    gDb = DataBase(gOutputPath)
+    settings.gDatabase = DataBase(settings.gOutputPath)
+    
+    #recurseiveley analyze folder
+    Crawl.AnalyzeFolder(scanpath)
 
-    print ("Analyzing folder",userpath)
-    analyzefolder(userpath, gDb)
-
-    gDb.ExportDatabase()
+    #export database
+    settings.gDatabase.ExportDatabase()
 
     
 

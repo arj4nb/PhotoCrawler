@@ -1,6 +1,7 @@
 import zipfile
 from Utils import *
 import os
+import settings
 
 def zipTimeConvert(z):
     import datetime
@@ -18,23 +19,24 @@ def extractFileFromZip(zfile, zipentry):
         orgdatetime = zipTimeConvert(zipentry_info)
         orgtime = time.mktime(orgdatetime.timetuple())
 
-        global gTempPath
-
         #extract the actual file to Temporary Path
-        zfile.extract(zipentry, gTempPath)
+        zfile.extract(zipentry, settings.gTempPath)
 
         #fix the path
         zippathfixed = zipentry.replace('/','\\')
         #get the actual location of the temporary file
-        tempfile = os.path.join(gTempPath, zippathfixed)
+        tempfile = os.path.join(settings.gTempPath, zippathfixed)
         #set the original time back on the file
         os.utime(tempfile, (orgtime, orgtime))
 
-    except:
-        print ("zip extract fail", zipentry)
+        #now copy the image to the final location
+        AddPhoto(settings.gTempPath, zippathfixed, time.mktime(orgdatetime.timetuple()))
+
+    except Exception as e:
+        print ("zip extract fail", zipentry, ": error", str(e))
 
 
-def analyzeZip(zipname):
+def AnalyzeZip(zipname):
     try:
         print ("Extracting Zip file ", zipname)
         zfile = zipfile.ZipFile(zipname)   
@@ -44,6 +46,6 @@ def analyzeZip(zipname):
                 extractFileFromZip(zfile, zipentry)
 
         zipfile.close()
-    except:
-        print ("zip analyze - error handling zipfile ",zipname)
+    except Exception as e:
+        print ("zip analyze - error handling zipfile ",zipname, ": error:", str(e))
 
