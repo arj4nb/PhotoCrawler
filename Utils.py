@@ -4,10 +4,37 @@ import shutil
 import settings
 import time
 import hashlib
+import logging
 from datetime import datetime, timezone
-from DataBase import *
 from PIL import Image
 from PIL.ExifTags import TAGS
+
+# Global logger instance for the entire application
+gLogger = logging.getLogger('PhotoCrawler')
+
+
+def log_debug(message):
+    """Log DEBUG message and print it with DEBUG prefix."""
+    gLogger.debug(message)
+    print(f"DEBUG: {message}")
+
+
+def log_info(message):
+    """Log INFO message and print it with INFO prefix."""
+    gLogger.info(message)
+    print(f"INFO: {message}")
+
+
+def log_warning(message):
+    """Log WARNING message and print it with WARNING prefix."""
+    gLogger.warning(message)
+    print(f"WARNING: {message}")
+
+
+def log_error(message, exc_info=False):
+    """Log ERROR message and print it with ERROR prefix."""
+    gLogger.error(message, exc_info=exc_info)
+    print(f"ERROR: {message}")
 
 
 def makeSurePathExists(path):
@@ -31,7 +58,7 @@ def computeFileHash(filepath):
                 hash_md5.update(chunk)
         return hash_md5.hexdigest()
     except Exception as e:
-        print("- error computing hash for ", filepath, ": error", str(e))
+        log_error(f"Error computing hash for {filepath}: {str(e)}", exc_info=True)
         return None
 
 #from Pillow: https://pillow.readthedocs.io/en/stable/handbook/overview.html#image-archives
@@ -46,7 +73,7 @@ def get_date_created(image_path):
                 if tag == 'DateTimeOriginal':
                     return value
     except Exception as e:
-        print("- error reading EXIF data from ", image_path, ": error", str(e))
+        log_error(f"Error reading EXIF data from {image_path}: {str(e)}", exc_info=True)
     return None     
 
 
@@ -98,7 +125,7 @@ def AddPhoto(path, filename, timestamp_float):
     # compute file hash for duplicate detection
     file_hash = computeFileHash(fullpath)
     if file_hash is None:
-        print("- skipping ", fullpath, " (failed to compute hash)")
+        log_error(f"Skipping {fullpath} (failed to compute hash)")
         return
 
     # check if photo already exists in database

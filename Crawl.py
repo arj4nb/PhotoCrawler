@@ -16,6 +16,6 @@ def AnalyzeFolder(path):
             elif isZipFile(entry.name):
                 AnalyzeZip(entry.path)
     except Exception as e:
-        print("- error scanning ", path, ": error", str(e))
+        log_error(f"Error scanning {path}: {str(e)}", exc_info=True)
 
 

@@ -37,7 +37,7 @@ def extractFileFromZip(zfile, zipentry):
         AddPhoto(settings.gTempPath, zipentry, time.mktime(orgdatetime.timetuple()))
 
     except Exception as e:
-        print ("zip extract fail", zipentry, ": error", str(e))
+        log_error(f"Zip extract fail {zipentry}: {str(e)}", exc_info=True)
 
 
 def AnalyzeZip(zipname):
@@ -51,5 +51,5 @@ def AnalyzeZip(zipname):
 
         zfile.close()
     except Exception as e:
-        print ("zip analyze - error handling zipfile ",zipname, ": error:", str(e))
+        log_error(f"Zip analyze - error handling zipfile {zipname}: {str(e)}", exc_info=True)
 
