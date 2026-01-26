@@ -27,6 +27,9 @@ def parse_arguments():
                         help='Temporary directory for ZIP extraction (default: output-path/Temp/)')
     parser.add_argument('--database-path', '-d',
                         help='Directory where database file is stored (default: output-path)')
+    parser.add_argument('--debug',
+                        action='store_true',
+                        help='Enable debug logging (default: off)')
     
     return parser.parse_args()
 
@@ -86,12 +89,20 @@ def validate_path(path, path_type, must_exist=False, must_be_writable=False):
 
 
 def main():
-    Log = logging.getLogger('myLogger')
-    level = logging.getLevelName('WARNING')
-    Log.setLevel(level)
+    from Utils import gLogger
+
+    print ("Starting Photo Crawler")
 
     # Parse command-line arguments
     args = parse_arguments()
+    
+    # Set logger level based on debug flag
+    if args.debug:
+        level = logging.getLevelName('DEBUG')
+        gLogger.setLevel(level)
+    else:
+        level = logging.getLevelName('WARNING')
+        gLogger.setLevel(level)
 
     # Get default paths based on platform
     from os.path import expanduser
@@ -113,26 +124,52 @@ def main():
     # Set database path (default to output path or from argument)
     settings.gDatabasePath = args.database_path or settings.gOutputPath
     settings.gDatabasePath = validate_path(settings.gDatabasePath, "Database", must_be_writable=True)
-
-    # All directories (output, temp, database) are now created via validate_path
-    print ("Starting Photo Crawler")
-
+    
     #initialize database
-    settings.gDatabase = DataBase(settings.gDatabasePath)
+    log_debug(f"Initializing database at: {settings.gDatabasePath}")
+    
+    try:
+        settings.gDatabase = DataBase(settings.gDatabasePath)
+        log_info("Database initialized successfully")
+        log_debug("Database initialized successfully")
+    except Exception as e:
+        error_msg = f"Failed to initialize database at {settings.gDatabasePath}: {str(e)}"
+        log_error(error_msg, exc_info=True)
+        raise
     
     # show database status for incremental mode
-    existing_count = settings.gDatabase.GetPhotoCount()
-    if existing_count > 0:
-        print ("Incremental mode: Found", existing_count, "existing photos in database")
-        print ("Skipping duplicates, only processing new files...")
-    else:
-        print ("Starting fresh scan (no existing photos in database)")
+    log_debug("Getting photo count from database...")
+    try:
+        existing_count = settings.gDatabase.GetPhotoCount()
+        if existing_count > 0:
+            print ("Incremental mode: Found", existing_count, "existing photos in database")
+            print ("Skipping duplicates, only processing new files...")
+            log_info(f"Incremental mode: {existing_count} existing photos in database")
+        else:
+            print ("Starting fresh scan (no existing photos in database)")
+            log_info("Starting fresh scan (no existing photos in database)")
+    except Exception as e:
+        error_msg = f"Error getting photo count: {str(e)}"
+        log_error(error_msg)
+        # Continue with scan even if count fails
+        log_warning("Continuing with scan despite count error")
     
     #recurseiveley analyze folder
     Crawl.AnalyzeFolder(scanpath)
 
     #export database
-    settings.gDatabase.ExportDatabase()
+    log_debug("Starting database export")
+    
+    try:
+        result = settings.gDatabase.ExportDatabase()
+        # Result is already logged in ExportDatabase method
+        log_info("Database export completed successfully")
+        log_debug("Database export completed successfully")
+    except Exception as e:
+        error_msg = f"Error exporting database: {str(e)}"
+        log_error(error_msg, exc_info=True)
+        # Export failure is not critical, continue
+        log_warning("Database export failed, but scan completed")
 
     
 
