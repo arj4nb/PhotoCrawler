@@ -44,6 +44,14 @@ def main():
     #initialize database
     settings.gDatabase = DataBase(settings.gOutputPath)
     
+    # show database status for incremental mode
+    existing_count = settings.gDatabase.GetPhotoCount()
+    if existing_count > 0:
+        print ("Incremental mode: Found", existing_count, "existing photos in database")
+        print ("Skipping duplicates, only processing new files...")
+    else:
+        print ("Starting fresh scan (no existing photos in database)")
+    
     #recurseiveley analyze folder
     Crawl.AnalyzeFolder(scanpath)
 
