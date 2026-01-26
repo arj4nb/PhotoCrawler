@@ -3,6 +3,7 @@ import os
 import shutil
 import settings
 import time
+import hashlib
 from datetime import datetime, timezone
 from DataBase import *
 from PIL import Image
@@ -19,6 +20,19 @@ def makeSurePathExists(path):
 
 def makeDirectorySafe(path):
     makeSurePathExists(path)
+
+def computeFileHash(filepath):
+    """Compute MD5 hash of a file for duplicate detection."""
+    try:
+        hash_md5 = hashlib.md5()
+        with open(filepath, "rb") as f:
+            # Read file in chunks to handle large files efficiently
+            for chunk in iter(lambda: f.read(4096), b""):
+                hash_md5.update(chunk)
+        return hash_md5.hexdigest()
+    except Exception as e:
+        print("- error computing hash for ", filepath, ": error", str(e))
+        return None
 
 #from Pillow: https://pillow.readthedocs.io/en/stable/handbook/overview.html#image-archives
 def get_date_created(image_path):
@@ -81,6 +95,17 @@ def AddPhoto(path, filename, timestamp_float):
     fullpath = os.path.join(path, filename)
     print("AddPhoto", fullpath)
 
+    # compute file hash for duplicate detection
+    file_hash = computeFileHash(fullpath)
+    if file_hash is None:
+        print("- skipping ", fullpath, " (failed to compute hash)")
+        return
+
+    # check if photo already exists in database
+    if settings.gDatabase.PhotoExists(file_hash):
+        print("- skipping ", fullpath, " (already in database)")
+        return
+
     # organize pictures into nicer paths based on date
     structured_path = organizePath(fullpath, timestamp_float)
 
@@ -88,5 +113,5 @@ def AddPhoto(path, filename, timestamp_float):
 
     # copy image in a structured location
     copyImage(fullpath, structured_path)
-    # add to database
-    settings.gDatabase.AddPhoto(filename, fullpath, timestamp_float)
+    # add to database with hash
+    settings.gDatabase.AddPhoto(filename, fullpath, timestamp_float, file_hash)

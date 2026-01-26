@@ -33,7 +33,7 @@ def extractFileFromZip(zfile, zipentry):
             #set the original time back on the file
             os.utime(extracted_file_path, (orgtime, orgtime))
 
-        #now copy the image to the final location
+        #now copy the image to the final location (AddPhoto will check for duplicates)
         AddPhoto(settings.gTempPath, zipentry, time.mktime(orgdatetime.timetuple()))
 
     except Exception as e:
