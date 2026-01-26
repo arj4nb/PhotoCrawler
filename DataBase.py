@@ -1,6 +1,7 @@
 import dataset
 import sqlite3
 import datetime
+import os
 
 
 
@@ -31,7 +32,12 @@ class Album:
 
 class DataBase:
 	def __init__(self,in_path):
-		self.db = dataset.connect('sqlite:///'+in_path+'myphotos.db')
+		# Ensure path ends with separator for directory paths
+		if not in_path.endswith(os.sep) and not in_path.endswith('/'):
+			in_path = in_path + os.sep
+		# Construct full database path
+		db_path = in_path + 'myphotos.db'
+		self.db = dataset.connect('sqlite:///' + db_path)
 
 	def AddPhoto(self, in_name, in_filename, in_timestamp, in_hash):
 		try:
