@@ -12,7 +12,7 @@ from DataBase import *
 import Crawl
 
 
-def parse_arguments():
+def ParseArguments():
     """Parse command-line arguments for configurable paths."""
     parser = argparse.ArgumentParser(
         description='Photo Crawler - Extract and organize photos from directories and ZIP files',
@@ -34,76 +34,66 @@ def parse_arguments():
     return parser.parse_args()
 
 
-def normalize_path(path):
-    """Normalize a path by expanding user directory and normalizing separators."""
-    if path is None:
-        return None
-    expanded = os.path.expanduser(path)
-    normalized = os.path.normpath(expanded)
-    # Ensure directory paths end with separator for consistency
-    # Only add separator if it's a directory or doesn't exist (assumed to be directory)
-    if os.path.exists(normalized):
-        if os.path.isdir(normalized):
-            return normalized + os.sep if not normalized.endswith(os.sep) else normalized
-    else:
-        # Path doesn't exist, assume it's a directory path
-        return normalized + os.sep if not normalized.endswith(os.sep) else normalized
-    return normalized
-
-
-def validate_path(path, path_type, must_exist=False, must_be_writable=False):
-    """Validate a path and return normalized path or raise error."""
-    if path is None:
-        return None
+def SetupLogging(database_path, debug=False):
+    """Initialize logging with file and console handlers.
     
-    normalized = normalize_path(path)
+    Args:
+        database_path: Path to database directory where Logs folder will be created
+        debug: If True, enable DEBUG level logging to console; otherwise WARNING
     
-    if must_exist:
-        if not os.path.exists(normalized):
-            raise ValueError(f"{path_type} path does not exist: {normalized}")
-        if not os.path.isdir(normalized):
-            raise ValueError(f"{path_type} path is not a directory: {normalized}")
-        if must_be_writable and not os.access(normalized, os.W_OK):
-            raise ValueError(f"{path_type} path is not writable: {normalized}")
-    else:
-        # For paths that don't need to exist, create the directory
-        # Strip trailing separators before creating (os.makedirs handles them, but cleaner this way)
-        path_to_create = normalized.rstrip(os.sep).rstrip('/')
-        if not path_to_create:
-            raise ValueError(f"{path_type} path is invalid: {normalized}")
-        
-        try:
-            os.makedirs(path_to_create, exist_ok=True)
-            # Verify directory was created
-            if not os.path.exists(path_to_create) or not os.path.isdir(path_to_create):
-                raise ValueError(f"{path_type} directory could not be created: {path_to_create}")
-            # Add trailing separator back for consistency
-            normalized = path_to_create + os.sep
-            if must_be_writable and not os.access(normalized, os.W_OK):
-                raise ValueError(f"{path_type} path is not writable: {normalized}")
-        except OSError as e:
-            raise ValueError(f"Cannot create {path_type} directory: {e}")
+    Returns:
+        The configured logger instance
+    """
+    import Utils
     
-    print(f"DEBUG: {path_type} path set to: {normalized}")
-    return normalized
-
-
-def main():
-    from Utils import gLogger
-
-    print ("Starting Photo Crawler")
-
-    # Parse command-line arguments
-    args = parse_arguments()
+    # Create Logs directory in database path
+    logs_dir = os.path.join(database_path, "Logs")
+    os.makedirs(logs_dir, exist_ok=True)
+    
+    # Create logger with file handler
+    gLogger = logging.getLogger('PhotoCrawler')
+    gLogger.setLevel(logging.DEBUG)  # Set to DEBUG to capture all levels, filter with handlers
+    
+    # Remove existing handlers to avoid duplicates
+    gLogger.handlers = []
+    
+    # Create file handler
+    log_file = os.path.join(logs_dir, 'photocrawler.log')
+    file_handler = logging.FileHandler(log_file)
+    file_handler.setLevel(logging.DEBUG)
+    
+    # Create console handler
+    console_handler = logging.StreamHandler()
     
     # Set logger level based on debug flag
-    if args.debug:
-        level = logging.getLevelName('DEBUG')
-        gLogger.setLevel(level)
+    if debug:
+        console_handler.setLevel(logging.DEBUG)
     else:
-        level = logging.getLevelName('WARNING')
-        gLogger.setLevel(level)
+        console_handler.setLevel(logging.WARNING)
+    
+    # Create formatter
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    file_handler.setFormatter(formatter)
+    console_handler.setFormatter(formatter)
+    
+    # Add handlers to logger
+    gLogger.addHandler(file_handler)
+    gLogger.addHandler(console_handler)
+    
+    # Set the logger in Utils module so all functions can use it
+    Utils.gLogger = gLogger
+    
+    return gLogger
 
+
+def Main():
+    import Utils
+    
+    LOG('INFO', "Starting Photo Crawler")
+
+    # Parse command-line arguments
+    args = ParseArguments()
+    
     # Get default paths based on platform
     from os.path import expanduser
     userpath = expanduser("~")
@@ -111,68 +101,78 @@ def main():
 
     # Set scan path (default or from argument)
     scanpath = args.scan_path or os.path.join(userpath, "PhotoTest")
-    scanpath = validate_path(scanpath, "Scan", must_exist=True)
+    scanpath = ValidatePath(scanpath, "Scan", must_exist=True)
 
     # Set output path (default or from argument)
     settings.gOutputPath = args.output_path or os.path.join(userpath, "PhotoExportTest/")
-    settings.gOutputPath = validate_path(settings.gOutputPath, "Output", must_be_writable=True)
+    settings.gOutputPath = ValidatePath(settings.gOutputPath, "Output", must_be_writable=True)
 
     # Set temp path (default to output/Temp/ or from argument)
     settings.gTempPath = args.temp_path or os.path.join(settings.gOutputPath, "Temp/")
-    settings.gTempPath = validate_path(settings.gTempPath, "Temp", must_be_writable=True)
+    settings.gTempPath = ValidatePath(settings.gTempPath, "Temp", must_be_writable=True)
 
     # Set database path (default to output path or from argument)
     settings.gDatabasePath = args.database_path or settings.gOutputPath
-    settings.gDatabasePath = validate_path(settings.gDatabasePath, "Database", must_be_writable=True)
+    settings.gDatabasePath = ValidatePath(settings.gDatabasePath, "Database", must_be_writable=True)
+    
+    # Initialize logging
+    SetupLogging(settings.gDatabasePath, args.debug)
     
     #initialize database
-    log_debug(f"Initializing database at: {settings.gDatabasePath}")
+    LOG('DEBUG', f"Initializing database at: {settings.gDatabasePath}")
     
     try:
         settings.gDatabase = DataBase(settings.gDatabasePath)
-        log_info("Database initialized successfully")
-        log_debug("Database initialized successfully")
+        LOG('INFO', "Database initialized successfully")
     except Exception as e:
         error_msg = f"Failed to initialize database at {settings.gDatabasePath}: {str(e)}"
-        log_error(error_msg, exc_info=True)
+        LOG('ERROR', error_msg, exc_info=True)
         raise
     
     # show database status for incremental mode
-    log_debug("Getting photo count from database...")
+    LOG('DEBUG', "Getting photo count from database...")
+    initial_count = 0
     try:
-        existing_count = settings.gDatabase.GetPhotoCount()
-        if existing_count > 0:
-            print ("Incremental mode: Found", existing_count, "existing photos in database")
-            print ("Skipping duplicates, only processing new files...")
-            log_info(f"Incremental mode: {existing_count} existing photos in database")
+        initial_count = settings.gDatabase.GetPhotoCount()
+        if initial_count > 0:
+            LOG('INFO', f"Incremental mode: Found {initial_count} existing photos in database")
+            LOG('INFO', "Skipping duplicates, only processing new files...")
         else:
-            print ("Starting fresh scan (no existing photos in database)")
-            log_info("Starting fresh scan (no existing photos in database)")
+            LOG('INFO', "Starting fresh scan (no existing photos in database)")
     except Exception as e:
         error_msg = f"Error getting photo count: {str(e)}"
-        log_error(error_msg)
+        LOG('ERROR', error_msg)
         # Continue with scan even if count fails
-        log_warning("Continuing with scan despite count error")
+        LOG('WARNING', "Continuing with scan despite count error")
     
     #recurseiveley analyze folder
     Crawl.AnalyzeFolder(scanpath)
 
     #export database
-    log_debug("Starting database export")
+    LOG('DEBUG', "Starting database export")
     
     try:
-        result = settings.gDatabase.ExportDatabase()
+        result = settings.gDatabase.ExportDatabase(initial_count)
         # Result is already logged in ExportDatabase method
-        log_info("Database export completed successfully")
-        log_debug("Database export completed successfully")
     except Exception as e:
         error_msg = f"Error exporting database: {str(e)}"
-        log_error(error_msg, exc_info=True)
+        LOG('ERROR', error_msg, exc_info=True)
         # Export failure is not critical, continue
-        log_warning("Database export failed, but scan completed")
+        LOG('WARNING', "Database export failed, but scan completed")
+
+    # Display import statistics
+    LOG('INFO', "="*60)
+    LOG('INFO', "Import complete")
+    LOG('INFO', "="*60)
+    LOG('INFO', f"Images scanned in folders:     {settings.gFolderImageCount}")
+    LOG('INFO', f"Images scanned in ZIP files:   {settings.gZipImageCount}")
+    LOG('INFO', f"Files skipped (better version): {settings.gSkippedBetterCount}")
+    LOG('INFO', "="*60)
+    LOG('INFO', f"Import complete - Folders: {settings.gFolderImageCount}, ZIPs: {settings.gZipImageCount}, Skipped: {settings.gSkippedBetterCount}")
+
 
     
 
 if __name__ == '__main__':
-    main()
+    Main()
     

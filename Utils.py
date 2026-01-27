@@ -9,35 +9,88 @@ from datetime import datetime, timezone
 from PIL import Image
 from PIL.ExifTags import TAGS
 
-# Global logger instance for the entire application
-gLogger = logging.getLogger('PhotoCrawler')
+# Global logger instance for the entire application (initialized in main())
+gLogger = None
 
 
-def log_debug(message):
-    """Log DEBUG message and print it with DEBUG prefix."""
-    gLogger.debug(message)
-    print(f"DEBUG: {message}")
+def LOG(level, message, exc_info=False):
+    """Log message at specified level and print it with level prefix.
+    
+    Args:
+        level: Logging level - 'DEBUG', 'INFO', 'WARNING', or 'ERROR'
+        message: Message to log
+        exc_info: If True, include exception info (only used for ERROR level)
+    """
+    level_upper = level.upper()
+    
+    if gLogger is not None:
+        if level_upper == 'DEBUG':
+            gLogger.debug(message)
+        elif level_upper == 'INFO':
+            gLogger.info(message)
+        elif level_upper == 'WARNING':
+            gLogger.warning(message)
+        elif level_upper == 'ERROR':
+            gLogger.error(message, exc_info=exc_info)
+    
+    print(f"{level_upper}: {message}")
 
 
-def log_info(message):
-    """Log INFO message and print it with INFO prefix."""
-    gLogger.info(message)
-    print(f"INFO: {message}")
+def NormalizePath(path):
+    """Normalize a path by expanding user directory and normalizing separators."""
+    if path is None:
+        return None
+    expanded = os.path.expanduser(path)
+    normalized = os.path.normpath(expanded)
+    # Ensure directory paths end with separator for consistency
+    # Only add separator if it's a directory or doesn't exist (assumed to be directory)
+    if os.path.exists(normalized):
+        if os.path.isdir(normalized):
+            return normalized + os.sep if not normalized.endswith(os.sep) else normalized
+    else:
+        # Path doesn't exist, assume it's a directory path
+        return normalized + os.sep if not normalized.endswith(os.sep) else normalized
+    return normalized
 
 
-def log_warning(message):
-    """Log WARNING message and print it with WARNING prefix."""
-    gLogger.warning(message)
-    print(f"WARNING: {message}")
+def ValidatePath(path, path_type, must_exist=False, must_be_writable=False):
+    """Validate a path and return normalized path or raise error."""
+    if path is None:
+        return None
+    
+    normalized = NormalizePath(path)
+    
+    if must_exist:
+        if not os.path.exists(normalized):
+            raise ValueError(f"{path_type} path does not exist: {normalized}")
+        if not os.path.isdir(normalized):
+            raise ValueError(f"{path_type} path is not a directory: {normalized}")
+        if must_be_writable and not os.access(normalized, os.W_OK):
+            raise ValueError(f"{path_type} path is not writable: {normalized}")
+    else:
+        # For paths that don't need to exist, create the directory
+        # Strip trailing separators before creating (os.makedirs handles them, but cleaner this way)
+        path_to_create = normalized.rstrip(os.sep).rstrip('/')
+        if not path_to_create:
+            raise ValueError(f"{path_type} path is invalid: {normalized}")
+        
+        try:
+            os.makedirs(path_to_create, exist_ok=True)
+            # Verify directory was created
+            if not os.path.exists(path_to_create) or not os.path.isdir(path_to_create):
+                raise ValueError(f"{path_type} directory could not be created: {path_to_create}")
+            # Add trailing separator back for consistency
+            normalized = path_to_create + os.sep
+            if must_be_writable and not os.access(normalized, os.W_OK):
+                raise ValueError(f"{path_type} path is not writable: {normalized}")
+        except OSError as e:
+            raise ValueError(f"Cannot create {path_type} directory: {e}")
+    
+    LOG('DEBUG', f"{path_type} path set to: {normalized}")
+    return normalized
 
 
-def log_error(message, exc_info=False):
-    """Log ERROR message and print it with ERROR prefix."""
-    gLogger.error(message, exc_info=exc_info)
-    print(f"ERROR: {message}")
-
-
-def makeSurePathExists(path):
+def MakeSurePathExists(path):
     import errno
     try:
         os.makedirs(path)
@@ -45,10 +98,10 @@ def makeSurePathExists(path):
         if exception.errno != errno.EEXIST:
             raise
 
-def makeDirectorySafe(path):
-    makeSurePathExists(path)
+def MakeDirectorySafe(path):
+    MakeSurePathExists(path)
 
-def computeFileHash(filepath):
+def ComputeFileHash(filepath):
     """Compute MD5 hash of a file for duplicate detection."""
     try:
         hash_md5 = hashlib.md5()
@@ -58,11 +111,11 @@ def computeFileHash(filepath):
                 hash_md5.update(chunk)
         return hash_md5.hexdigest()
     except Exception as e:
-        log_error(f"Error computing hash for {filepath}: {str(e)}", exc_info=True)
+        LOG('ERROR', f"Error computing hash for {filepath}: {str(e)}", exc_info=True)
         return None
 
 #from Pillow: https://pillow.readthedocs.io/en/stable/handbook/overview.html#image-archives
-def get_date_created(image_path):
+def GetDateCreated(image_path):
     try:
         image = Image.open(image_path)
         exifdata = image._getexif()
@@ -73,18 +126,18 @@ def get_date_created(image_path):
                 if tag == 'DateTimeOriginal':
                     return value
     except Exception as e:
-        log_error(f"Error reading EXIF data from {image_path}: {str(e)}", exc_info=True)
+        LOG('ERROR', f"Error reading EXIF data from {image_path}: {str(e)}", exc_info=True)
     return None     
 
 
 
 #copy image to new folder. retain timestamps and basename
-def copyImage(filename, destinationpath):
+def CopyImage(filename, destinationpath):
     basename = os.path.basename(filename)
     destname = os.path.join(destinationpath, basename)
     shutil.copy2(filename, destname)
 
-def isImageFile(filename):
+def IsImageFile(filename):
     lowered_filename = filename.lower()
     for image_ext in settings.gImageExtensions:
         if lowered_filename.endswith(image_ext):
@@ -92,11 +145,11 @@ def isImageFile(filename):
     return False
 
 #is this a zipfile    
-def isZipFile(filename):
+def IsZipFile(filename):
     return filename.lower().endswith('zip')
 
 #see if we actually want to parse this folder, iphoto libraries have all kind of junk
-def isValidSubDirectory(filename):
+def IsValidSubDirectory(filename):
     for ignorefolder in settings.gIgnoreFolders:
         if ignorefolder in filename:
             return False
@@ -105,7 +158,7 @@ def isValidSubDirectory(filename):
 
 
 #organize path
-def organizePath(path, timestamp_float):
+def OrganizePath(path, timestamp_float):
     base = os.path.basename(path)
     dirn = os.path.dirname(path)
 
@@ -120,25 +173,71 @@ def organizePath(path, timestamp_float):
 
 def AddPhoto(path, filename, timestamp_float):
     fullpath = os.path.join(path, filename)
-    print("AddPhoto", fullpath)
+    LOG('DEBUG', f"AddPhoto: {fullpath}")
 
     # compute file hash for duplicate detection
-    file_hash = computeFileHash(fullpath)
+    file_hash = ComputeFileHash(fullpath)
     if file_hash is None:
-        log_error(f"Skipping {fullpath} (failed to compute hash)")
+        LOG('ERROR', f"Skipping {fullpath} (failed to compute hash)")
         return
 
     # check if photo already exists in database
-    if settings.gDatabase.PhotoExists(file_hash):
-        print("- skipping ", fullpath, " (already in database)")
+    if settings.gDatabase.PhotoExists(filename, file_hash):
+        LOG('WARNING', f"Skipping {fullpath} (already in database)")
         return
 
     # organize pictures into nicer paths based on date
-    structured_path = organizePath(fullpath, timestamp_float)
+    structured_path = OrganizePath(fullpath, timestamp_float)
 
-    makeSurePathExists(structured_path)
+    MakeSurePathExists(structured_path)
 
-    # copy image in a structured location
-    copyImage(fullpath, structured_path)
-    # add to database with hash
-    settings.gDatabase.AddPhoto(filename, fullpath, timestamp_float, file_hash)
+    # Check for filename conflict and compare files
+    dest_path = os.path.join(structured_path, filename)
+    should_copy = True
+    
+    if os.path.exists(dest_path):
+        try:
+            # Check if source and destination are the same file
+            try:
+                if os.path.samefile(fullpath, dest_path):
+                    LOG('DEBUG', f"Skipping {fullpath} - source and destination are the same file")
+                    return
+            except OSError:
+                # If samefile check fails, proceed with comparison
+                pass
+            
+            # Get file stats for comparison
+            source_stat = os.stat(fullpath)
+            dest_stat = os.stat(dest_path)
+            
+            source_mtime = source_stat.st_mtime
+            dest_mtime = dest_stat.st_mtime
+            source_size = source_stat.st_size
+            dest_size = dest_stat.st_size
+            
+            # Compare: newer file wins, if same time then larger file wins
+            if dest_mtime > source_mtime:
+                should_copy = False
+                settings.gSkippedBetterCount += 1
+                LOG('WARNING', f"Skipping {fullpath} - existing file {dest_path} is newer")
+            elif dest_mtime == source_mtime:
+                if dest_size >= source_size:
+                    should_copy = False
+                    settings.gSkippedBetterCount += 1
+                    LOG('WARNING', f"Skipping {fullpath} - existing file {dest_path} is same age but larger or equal size")
+                else:
+                    LOG('WARNING', f"Replacing {dest_path} with larger file {fullpath}")
+            else:
+                LOG('DEBUG', f"Replacing {dest_path} with newer file {fullpath}")
+        except OSError as e:
+            LOG('ERROR', f"Error comparing files {fullpath} and {dest_path}: {str(e)}", exc_info=True)
+            # On error, proceed with copy to be safe
+            should_copy = True
+    
+    # copy image in a structured location (only if should_copy is True)
+    if should_copy:
+        CopyImage(fullpath, structured_path)
+        # add to database with hash
+        settings.gDatabase.AddPhoto(filename, fullpath, timestamp_float, file_hash)
+    else:
+        LOG('DEBUG', f"Not copying {fullpath} - existing file is better")
