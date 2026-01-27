@@ -115,23 +115,56 @@ def ComputeFileHash(filepath):
         return None
 
 #from Pillow: https://pillow.readthedocs.io/en/stable/handbook/overview.html#image-archives
-def GetEXIFDateCreated(image_path):
-    """Get Content Created date from EXIF data, checking multiple tags."""
+def GetEarliestDateCreatedFromExif(image_path):
+    """Get Content Created date from EXIF data by checking date/time tags and returning the earliest valid timestamp.
+    
+    Only checks known date/time EXIF tags: 306 (DateTime), 36867 (DateTimeOriginal), 36868 (DateTimeDigitized).
+    
+    Args:
+        image_path: Path to the image file
+        
+    Returns:
+        Unix timestamp as float of the earliest valid date found, or None if no valid dates found
+    """
     try:
         with Image.open(image_path) as image:
             exifdata = image._getexif()
             
-            if exifdata:
-                # Priority order: DateTimeOriginal > DateTimeDigitized > DateTime
-                date_tags = [
-                    ('DateTimeOriginal', 36867),
-                    ('DateTimeDigitized', 36868),
-                    ('DateTime', 306)
-                ]
-                
-                for tag_name, tag_id in date_tags:
-                    if tag_id in exifdata:
-                        return exifdata[tag_id]
+            if not exifdata:
+                return None
+            
+            # Only check known date/time EXIF tags
+            date_tags = [
+                (306, 'DateTime'),
+                (36867, 'DateTimeOriginal'),
+                (36868, 'DateTimeDigitized')
+            ]
+            
+            # Collect all valid timestamps from date/time tags
+            valid_timestamps = []
+            
+            for tag_id, tag_name in date_tags:
+                if tag_id in exifdata:
+                    value = exifdata[tag_id]
+                    # Check if value is a string that looks like an EXIF date/time
+                    if isinstance(value, str):
+                        try:
+                            # Try to parse it as an EXIF date
+                            timestamp = ParseExifDateString(value)
+                            if timestamp is not None:
+                                valid_timestamps.append(timestamp)
+                                # LOG('DEBUG', f"Found valid EXIF date tag {tag_name} ({tag_id}): {value} -> {timestamp}")
+                        except Exception:
+                            # Not a valid date string, skip
+                            # LOG('DEBUG', f"Invalid date string in EXIF tag {tag_name} ({tag_id}): {value}")
+                            pass
+            
+            # Return the earliest (minimum) timestamp found
+            if valid_timestamps:
+                earliest = min(valid_timestamps)
+                # LOG('DEBUG', f"Earliest EXIF timestamp found: {earliest}")
+                return earliest
+            
     except Exception as e:
         LOG('ERROR', f"Error reading EXIF data from {image_path}: {str(e)}", exc_info=True)
     return None     
@@ -160,9 +193,17 @@ def ParseExifDateString(exif_date_string):
 
 
 #copy image to new folder. retain timestamps and basename
-def CopyImage(filename, destinationpath):
-    basename = os.path.basename(filename)
-    destname = os.path.join(destinationpath, basename)
+def CopyImage(filename, destinationpath, new_filename=None):
+    """Copy image file to destination path.
+    
+    Args:
+        filename: Source file path
+        destinationpath: Destination directory path
+        new_filename: Optional new filename to use (defaults to source basename)
+    """
+    if new_filename is None:
+        new_filename = os.path.basename(filename)
+    destname = os.path.join(destinationpath, new_filename)
     shutil.copy2(filename, destname)
 
 def IsImageFile(filename):
@@ -201,9 +242,15 @@ def OrganizePath(path, timestamp_float):
     return newpath
 
 
-def AddPhoto(path, filename, timestamp_float):
-    fullpath = os.path.join(path, filename)
-    LOG('DEBUG', f"AddPhoto: {fullpath}")
+def AddPhoto(fullpath, new_filename, timestamp_float):
+    """Add a photo to the library.
+    
+    Args:
+        fullpath: Full path to the source image file
+        new_filename: Filename to use when copying (may be original filename from database)
+        timestamp_float: Timestamp to use for organization
+    """
+    # LOG('DEBUG', f"AddPhoto: {fullpath} (new filename: {new_filename})")
 
     # compute file hash for duplicate detection
     file_hash = ComputeFileHash(fullpath)
@@ -212,7 +259,7 @@ def AddPhoto(path, filename, timestamp_float):
         return
 
     # check if photo already exists in database
-    if settings.gDatabase.PhotoExists(filename, file_hash):
+    if settings.gDatabase.PhotoExists(new_filename, file_hash):
         settings.gSkippedDatabaseCount += 1
         LOG('WARNING', f"Skipping {fullpath} (already in database)")
         return
@@ -220,14 +267,12 @@ def AddPhoto(path, filename, timestamp_float):
     organization_timestamp = timestamp_float  # Default to file mtime
 
     # Try to get EXIF date for better organization (only for supported formats)
-    file_ext = os.path.splitext(filename)[1].lstrip('.').lower()
+    file_ext = os.path.splitext(new_filename)[1].lstrip('.').lower()
     if file_ext in settings.gExifImageExtensions:
-        exif_date_string = GetEXIFDateCreated(fullpath)
-        if exif_date_string:
-            exif_timestamp = ParseExifDateString(exif_date_string)
-            if exif_timestamp:
-                organization_timestamp = exif_timestamp
-                LOG('DEBUG', f"Using EXIF date for organization: {exif_date_string}")
+        exif_timestamp = GetEarliestDateCreatedFromExif(fullpath)
+        if exif_timestamp:
+            organization_timestamp = exif_timestamp
+            LOG('DEBUG', f"Using EXIF date for organization: {exif_timestamp}")
 
     # organize pictures into nicer paths based on date
     structured_path = OrganizePath(fullpath, organization_timestamp)
@@ -235,20 +280,12 @@ def AddPhoto(path, filename, timestamp_float):
     MakeSurePathExists(structured_path)
 
     # Check for filename conflict and compare files
-    dest_path = os.path.join(structured_path, filename)
+    dest_path = os.path.join(structured_path, new_filename)
     should_copy = True
     
     if os.path.exists(dest_path):
         try:
-            # Check if source and destination are the same file
-            try:
-                if os.path.samefile(fullpath, dest_path):
-                    LOG('DEBUG', f"Skipping {fullpath} - source and destination are the same file")
-                    return
-            except OSError:
-                # If samefile check fails, proceed with comparison
-                pass
-            
+           
             # Get file stats for comparison
             source_stat = os.stat(fullpath)
             dest_stat = os.stat(dest_path)
@@ -263,15 +300,10 @@ def AddPhoto(path, filename, timestamp_float):
                 should_copy = False
                 settings.gSkippedBetterCount += 1
                 LOG('WARNING', f"Skipping {fullpath} - existing file {dest_path} is newer")
-            elif dest_mtime == source_mtime:
-                if dest_size >= source_size:
-                    should_copy = False
-                    settings.gSkippedBetterCount += 1
-                    LOG('WARNING', f"Skipping {fullpath} - existing file {dest_path} is same age but larger or equal size")
-                else:
-                    LOG('WARNING', f"Replacing {dest_path} with larger file {fullpath}")
-            else:
-                LOG('DEBUG', f"Replacing {dest_path} with newer file {fullpath}")
+            if dest_size >= source_size:
+                should_copy = False
+                settings.gSkippedBetterCount += 1
+                LOG('WARNING', f"Skipping {fullpath} - existing file {dest_path} is larger or equal size")
         except OSError as e:
             LOG('ERROR', f"Error comparing files {fullpath} and {dest_path}: {str(e)}", exc_info=True)
             # On error, proceed with copy to be safe
@@ -279,8 +311,8 @@ def AddPhoto(path, filename, timestamp_float):
     
     # copy image in a structured location (only if should_copy is True)
     if should_copy:
-        CopyImage(fullpath, structured_path)
+        CopyImage(fullpath, structured_path, new_filename)
         # add to database with hash
-        settings.gDatabase.AddPhoto(filename, fullpath, timestamp_float, file_hash)
+        settings.gDatabase.AddPhoto(new_filename, fullpath, timestamp_float, file_hash)
     else:
         LOG('DEBUG', f"Not copying {fullpath} - existing file is better")
