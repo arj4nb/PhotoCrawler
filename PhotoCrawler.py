@@ -12,7 +12,7 @@ from DataBase import *
 import Crawl
 
 
-def parse_arguments():
+def ParseArguments():
     """Parse command-line arguments for configurable paths."""
     parser = argparse.ArgumentParser(
         description='Photo Crawler - Extract and organize photos from directories and ZIP files',
@@ -34,7 +34,7 @@ def parse_arguments():
     return parser.parse_args()
 
 
-def setup_logging(database_path, debug=False):
+def SetupLogging(database_path, debug=False):
     """Initialize logging with file and console handlers.
     
     Args:
@@ -86,13 +86,13 @@ def setup_logging(database_path, debug=False):
     return gLogger
 
 
-def main():
+def Main():
     import Utils
     
-    print ("Starting Photo Crawler")
+    LOG('INFO', "Starting Photo Crawler")
 
     # Parse command-line arguments
-    args = parse_arguments()
+    args = ParseArguments()
     
     # Get default paths based on platform
     from os.path import expanduser
@@ -101,22 +101,22 @@ def main():
 
     # Set scan path (default or from argument)
     scanpath = args.scan_path or os.path.join(userpath, "PhotoTest")
-    scanpath = validate_path(scanpath, "Scan", must_exist=True)
+    scanpath = ValidatePath(scanpath, "Scan", must_exist=True)
 
     # Set output path (default or from argument)
     settings.gOutputPath = args.output_path or os.path.join(userpath, "PhotoExportTest/")
-    settings.gOutputPath = validate_path(settings.gOutputPath, "Output", must_be_writable=True)
+    settings.gOutputPath = ValidatePath(settings.gOutputPath, "Output", must_be_writable=True)
 
     # Set temp path (default to output/Temp/ or from argument)
     settings.gTempPath = args.temp_path or os.path.join(settings.gOutputPath, "Temp/")
-    settings.gTempPath = validate_path(settings.gTempPath, "Temp", must_be_writable=True)
+    settings.gTempPath = ValidatePath(settings.gTempPath, "Temp", must_be_writable=True)
 
     # Set database path (default to output path or from argument)
     settings.gDatabasePath = args.database_path or settings.gOutputPath
-    settings.gDatabasePath = validate_path(settings.gDatabasePath, "Database", must_be_writable=True)
+    settings.gDatabasePath = ValidatePath(settings.gDatabasePath, "Database", must_be_writable=True)
     
     # Initialize logging
-    setup_logging(settings.gDatabasePath, args.debug)
+    SetupLogging(settings.gDatabasePath, args.debug)
     
     #initialize database
     LOG('DEBUG', f"Initializing database at: {settings.gDatabasePath}")
@@ -135,11 +135,9 @@ def main():
     try:
         initial_count = settings.gDatabase.GetPhotoCount()
         if initial_count > 0:
-            print ("Incremental mode: Found", initial_count, "existing photos in database")
-            print ("Skipping duplicates, only processing new files...")
-            LOG('INFO', f"Incremental mode: {initial_count} existing photos in database")
+            LOG('INFO', f"Incremental mode: Found {initial_count} existing photos in database")
+            LOG('INFO', "Skipping duplicates, only processing new files...")
         else:
-            print ("Starting fresh scan (no existing photos in database)")
             LOG('INFO', "Starting fresh scan (no existing photos in database)")
     except Exception as e:
         error_msg = f"Error getting photo count: {str(e)}"
@@ -156,7 +154,6 @@ def main():
     try:
         result = settings.gDatabase.ExportDatabase(initial_count)
         # Result is already logged in ExportDatabase method
-        LOG('INFO', "Database export completed successfully")
     except Exception as e:
         error_msg = f"Error exporting database: {str(e)}"
         LOG('ERROR', error_msg, exc_info=True)
@@ -164,17 +161,18 @@ def main():
         LOG('WARNING', "Database export failed, but scan completed")
 
     # Display import statistics
-    print("\n" + "="*60)
-    print("Import complete")
-    print("="*60)
-    print(f"Images scanned in folders:     {settings.gFolderImageCount}")
-    print(f"Images scanned in ZIP files:   {settings.gZipImageCount}")
-    print(f"Files skipped (better version): {settings.gSkippedBetterCount}")
-    print("="*60)
+    LOG('INFO', "="*60)
+    LOG('INFO', "Import complete")
+    LOG('INFO', "="*60)
+    LOG('INFO', f"Images scanned in folders:     {settings.gFolderImageCount}")
+    LOG('INFO', f"Images scanned in ZIP files:   {settings.gZipImageCount}")
+    LOG('INFO', f"Files skipped (better version): {settings.gSkippedBetterCount}")
+    LOG('INFO', "="*60)
     LOG('INFO', f"Import complete - Folders: {settings.gFolderImageCount}, ZIPs: {settings.gZipImageCount}, Skipped: {settings.gSkippedBetterCount}")
+
 
     
 
 if __name__ == '__main__':
-    main()
+    Main()
     

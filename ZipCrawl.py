@@ -4,12 +4,12 @@ import os
 import pathlib
 import settings
 
-def zipTimeConvert(z):
+def ZipTimeConvert(z):
     import datetime
     return datetime.datetime(z.date_time[0],z.date_time[1],z.date_time[2],z.date_time[3],z.date_time[4],z.date_time[5])
 
 
-def _remove_empty_dirs(dir_path, stop_at_path):
+def RemoveEmptyDirs(dir_path, stop_at_path):
     """Remove empty directories recursively, stopping at stop_at_path.
     
     Args:
@@ -41,7 +41,7 @@ def _remove_empty_dirs(dir_path, stop_at_path):
             # Recursively try to remove parent directory
             parent_dir = os.path.dirname(dir_path)
             if parent_dir and parent_dir != dir_path:
-                _remove_empty_dirs(parent_dir, stop_at_path)
+                RemoveEmptyDirs(parent_dir, stop_at_path)
         except OSError:
             # Directory not empty or other error - that's fine, just stop
             pass
@@ -50,15 +50,15 @@ def _remove_empty_dirs(dir_path, stop_at_path):
 
 
 
-def extractFileFromZip(zfile, zipentry):
+def ExtractFileFromZip(zfile, zipentry):
     import time
     extracted_file_path = None
     try:
-        print ("zip extracting :", zipentry)
+        LOG('DEBUG', f"zip extracting : {zipentry}")
 
         #get the file attributes in the zipfile
         zipentry_info = zfile.getinfo(zipentry)
-        orgdatetime = zipTimeConvert(zipentry_info)
+        orgdatetime = ZipTimeConvert(zipentry_info)
         orgtime = time.mktime(orgdatetime.timetuple())
 
         zip_crc = zipentry_info.CRC
@@ -94,13 +94,13 @@ def AnalyzeZip(zipname):
     created_dirs = set()
     
     try:
-        print ("Extracting Zip file ", zipname)
+        LOG('INFO', f"Extracting Zip file {zipname}")
         zfile = zipfile.ZipFile(zipname)   
 
         for zipentry in zfile.namelist():
-            if not zipentry.endswith('//') and isValidSubDirectory(zipentry) and isImageFile(zipentry):     #not a folder
+            if not zipentry.endswith('//') and IsValidSubDirectory(zipentry) and IsImageFile(zipentry):     #not a folder
                 settings.gZipImageCount += 1
-                extractFileFromZip(zfile, zipentry)
+                ExtractFileFromZip(zfile, zipentry)
                 
                 # Track directory paths created during extraction
                 zipentry_dir = os.path.dirname(zipentry)
@@ -124,5 +124,5 @@ def AnalyzeZip(zipname):
         if created_dirs:
             sorted_dirs = sorted(created_dirs, key=lambda x: x.count(os.sep), reverse=True)
             for dir_path in sorted_dirs:
-                _remove_empty_dirs(dir_path, settings.gTempPath)
+                RemoveEmptyDirs(dir_path, settings.gTempPath)
 

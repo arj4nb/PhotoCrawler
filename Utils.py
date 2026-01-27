@@ -36,7 +36,7 @@ def LOG(level, message, exc_info=False):
     print(f"{level_upper}: {message}")
 
 
-def normalize_path(path):
+def NormalizePath(path):
     """Normalize a path by expanding user directory and normalizing separators."""
     if path is None:
         return None
@@ -53,12 +53,12 @@ def normalize_path(path):
     return normalized
 
 
-def validate_path(path, path_type, must_exist=False, must_be_writable=False):
+def ValidatePath(path, path_type, must_exist=False, must_be_writable=False):
     """Validate a path and return normalized path or raise error."""
     if path is None:
         return None
     
-    normalized = normalize_path(path)
+    normalized = NormalizePath(path)
     
     if must_exist:
         if not os.path.exists(normalized):
@@ -86,11 +86,11 @@ def validate_path(path, path_type, must_exist=False, must_be_writable=False):
         except OSError as e:
             raise ValueError(f"Cannot create {path_type} directory: {e}")
     
-    print(f"DEBUG: {path_type} path set to: {normalized}")
+    LOG('DEBUG', f"{path_type} path set to: {normalized}")
     return normalized
 
 
-def makeSurePathExists(path):
+def MakeSurePathExists(path):
     import errno
     try:
         os.makedirs(path)
@@ -98,10 +98,10 @@ def makeSurePathExists(path):
         if exception.errno != errno.EEXIST:
             raise
 
-def makeDirectorySafe(path):
-    makeSurePathExists(path)
+def MakeDirectorySafe(path):
+    MakeSurePathExists(path)
 
-def computeFileHash(filepath):
+def ComputeFileHash(filepath):
     """Compute MD5 hash of a file for duplicate detection."""
     try:
         hash_md5 = hashlib.md5()
@@ -115,7 +115,7 @@ def computeFileHash(filepath):
         return None
 
 #from Pillow: https://pillow.readthedocs.io/en/stable/handbook/overview.html#image-archives
-def get_date_created(image_path):
+def GetDateCreated(image_path):
     try:
         image = Image.open(image_path)
         exifdata = image._getexif()
@@ -132,12 +132,12 @@ def get_date_created(image_path):
 
 
 #copy image to new folder. retain timestamps and basename
-def copyImage(filename, destinationpath):
+def CopyImage(filename, destinationpath):
     basename = os.path.basename(filename)
     destname = os.path.join(destinationpath, basename)
     shutil.copy2(filename, destname)
 
-def isImageFile(filename):
+def IsImageFile(filename):
     lowered_filename = filename.lower()
     for image_ext in settings.gImageExtensions:
         if lowered_filename.endswith(image_ext):
@@ -145,11 +145,11 @@ def isImageFile(filename):
     return False
 
 #is this a zipfile    
-def isZipFile(filename):
+def IsZipFile(filename):
     return filename.lower().endswith('zip')
 
 #see if we actually want to parse this folder, iphoto libraries have all kind of junk
-def isValidSubDirectory(filename):
+def IsValidSubDirectory(filename):
     for ignorefolder in settings.gIgnoreFolders:
         if ignorefolder in filename:
             return False
@@ -158,7 +158,7 @@ def isValidSubDirectory(filename):
 
 
 #organize path
-def organizePath(path, timestamp_float):
+def OrganizePath(path, timestamp_float):
     base = os.path.basename(path)
     dirn = os.path.dirname(path)
 
@@ -176,7 +176,7 @@ def AddPhoto(path, filename, timestamp_float):
     LOG('DEBUG', f"AddPhoto: {fullpath}")
 
     # compute file hash for duplicate detection
-    file_hash = computeFileHash(fullpath)
+    file_hash = ComputeFileHash(fullpath)
     if file_hash is None:
         LOG('ERROR', f"Skipping {fullpath} (failed to compute hash)")
         return
@@ -187,9 +187,9 @@ def AddPhoto(path, filename, timestamp_float):
         return
 
     # organize pictures into nicer paths based on date
-    structured_path = organizePath(fullpath, timestamp_float)
+    structured_path = OrganizePath(fullpath, timestamp_float)
 
-    makeSurePathExists(structured_path)
+    MakeSurePathExists(structured_path)
 
     # Check for filename conflict and compare files
     dest_path = os.path.join(structured_path, filename)
@@ -236,7 +236,7 @@ def AddPhoto(path, filename, timestamp_float):
     
     # copy image in a structured location (only if should_copy is True)
     if should_copy:
-        copyImage(fullpath, structured_path)
+        CopyImage(fullpath, structured_path)
         # add to database with hash
         settings.gDatabase.AddPhoto(filename, fullpath, timestamp_float, file_hash)
     else:
