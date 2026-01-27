@@ -72,7 +72,7 @@ def SetupLogging(database_path, debug=False):
         console_handler.setLevel(logging.WARNING)
     
     # Create formatter
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    formatter = logging.Formatter('%(levelname)s - %(message)s')
     file_handler.setFormatter(formatter)
     console_handler.setFormatter(formatter)
     
@@ -119,11 +119,11 @@ def Main():
     SetupLogging(settings.gDatabasePath, args.debug)
     
     #initialize database
-    LOG('DEBUG', f"Initializing database at: {settings.gDatabasePath}")
+    LOG('INFO', f"Initializing database at: {settings.gDatabasePath}")
     
     try:
         settings.gDatabase = DataBase(settings.gDatabasePath)
-        LOG('INFO', "Database initialized successfully")
+        LOG('DEBUG', "Database initialized successfully")
     except Exception as e:
         error_msg = f"Failed to initialize database at {settings.gDatabasePath}: {str(e)}"
         LOG('ERROR', error_msg, exc_info=True)
@@ -145,7 +145,7 @@ def Main():
         # Continue with scan even if count fails
         LOG('WARNING', "Continuing with scan despite count error")
     
-    #recurseiveley analyze folder
+    #recursively analyze folder
     Crawl.AnalyzeFolder(scanpath)
 
     #export database
@@ -167,8 +167,10 @@ def Main():
     LOG('INFO', f"Images scanned in folders:     {settings.gFolderImageCount}")
     LOG('INFO', f"Images scanned in ZIP files:   {settings.gZipImageCount}")
     LOG('INFO', f"Files skipped (better version): {settings.gSkippedBetterCount}")
+    LOG('INFO', f"Files skipped (in database):   {settings.gSkippedDatabaseCount}")
+    LOG('INFO', f"Non-image files encountered:   {settings.gNonImageFileCount}")
     LOG('INFO', "="*60)
-    LOG('INFO', f"Import complete - Folders: {settings.gFolderImageCount}, ZIPs: {settings.gZipImageCount}, Skipped: {settings.gSkippedBetterCount}")
+    LOG('INFO', f"Import complete - Folders: {settings.gFolderImageCount}, ZIPs: {settings.gZipImageCount}, Skipped (better): {settings.gSkippedBetterCount}, Skipped (database): {settings.gSkippedDatabaseCount}, Non-image: {settings.gNonImageFileCount}")
 
 
     

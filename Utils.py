@@ -33,7 +33,7 @@ def LOG(level, message, exc_info=False):
         elif level_upper == 'ERROR':
             gLogger.error(message, exc_info=exc_info)
     
-    print(f"{level_upper}: {message}")
+    #print(f"{level_upper}: {message}")
 
 
 def NormalizePath(path):
@@ -148,6 +148,10 @@ def IsImageFile(filename):
 def IsZipFile(filename):
     return filename.lower().endswith('zip')
 
+def IsPhotosLibraryPackage(path):
+    """Check if a path is an Apple Photos library package."""
+    return path.lower().endswith('.photoslibrary') and os.path.isdir(path)
+
 #see if we actually want to parse this folder, iphoto libraries have all kind of junk
 def IsValidSubDirectory(filename):
     for ignorefolder in settings.gIgnoreFolders:
@@ -183,6 +187,7 @@ def AddPhoto(path, filename, timestamp_float):
 
     # check if photo already exists in database
     if settings.gDatabase.PhotoExists(filename, file_hash):
+        settings.gSkippedDatabaseCount += 1
         LOG('WARNING', f"Skipping {fullpath} (already in database)")
         return
 
