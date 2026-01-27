@@ -65,7 +65,7 @@ class DataBase:
 			raise
 
 	def AddPhoto(self, in_name, in_filename, in_timestamp, in_hash):
-		LOG('DEBUG', f"Adding photo to database: {in_filename} (hash: {in_hash[:16]}...)")
+		# LOG('DEBUG', f"Adding photo to database: {in_filename} (hash: {in_hash[:16]}...)")
 		
 		try:
 			table = self.db['photos']
@@ -91,7 +91,7 @@ class DataBase:
 
 	def FindPhoto(self, in_filename):
 		"""Find a photo by filename in the database."""
-		LOG('DEBUG', f"Finding photo in database: {in_filename}")
+		# LOG('DEBUG', f"Finding photo in database: {in_filename}")
 		
 		try:
 			table = self.db['photos']

@@ -1,11 +1,9 @@
 #my first python program!
 import os
-import scandir
 import sys
 import argparse
 import logging
 import sqlite3
-import dataset
 import settings
 from Utils import *
 from DataBase import *
@@ -169,8 +167,9 @@ def Main():
     LOG('INFO', f"Files skipped (better version): {settings.gSkippedBetterCount}")
     LOG('INFO', f"Files skipped (in database):   {settings.gSkippedDatabaseCount}")
     LOG('INFO', f"Non-image files encountered:   {settings.gNonImageFileCount}")
+    LOG('INFO', f"Photos skipped (not available): {settings.gSkippedPhotosLibraryCount}")
     LOG('INFO', "="*60)
-    LOG('INFO', f"Import complete - Folders: {settings.gFolderImageCount}, ZIPs: {settings.gZipImageCount}, Skipped (better): {settings.gSkippedBetterCount}, Skipped (database): {settings.gSkippedDatabaseCount}, Non-image: {settings.gNonImageFileCount}")
+    LOG('INFO', f"Import complete - Folders: {settings.gFolderImageCount}, ZIPs: {settings.gZipImageCount}, Skipped (better): {settings.gSkippedBetterCount}, Skipped (database): {settings.gSkippedDatabaseCount}, Non-image: {settings.gNonImageFileCount}, Photos skipped: {settings.gSkippedPhotosLibraryCount}")
 
 
     
