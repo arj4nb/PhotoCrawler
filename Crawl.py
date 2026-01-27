@@ -12,10 +12,11 @@ def AnalyzeFolder(path):
             if entry.is_dir() and isValidSubDirectory(entry.path):
                 AnalyzeFolder(entry.path)
             elif isImageFile(entry.name):
+                settings.gFolderImageCount += 1
                 AddPhoto(path, entry.name, entry.stat().st_mtime)
             elif isZipFile(entry.name):
                 AnalyzeZip(entry.path)
     except Exception as e:
-        log_error(f"Error scanning {path}: {str(e)}", exc_info=True)
+        LOG('ERROR', f"Error scanning {path}: {str(e)}", exc_info=True)
 
 
