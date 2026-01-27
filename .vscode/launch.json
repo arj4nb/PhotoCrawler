@@ -3,7 +3,7 @@
 	"configurations": [
 		{
 			"name": "Python",
-			"type": "python",
+			"type": "debugpy",
 			"request": "launch",
 			"stopOnEntry": false,
 			"program": "PhotoCrawler.py",
@@ -18,27 +18,19 @@
 				"/Users/arjan.brussee/PhotoExportTest/Database",
 				"--debug"
 			],
-			"debugOptions": [
-				"WaitOnAbnormalExit",
-				"WaitOnNormalExit",
-				"RedirectOutput"
-			]
+
 		},
 		{
 			"name": "Python Console App",
-			"type": "python",
+			"type": "debugpy",
 			"request": "launch",
 			"stopOnEntry": false,
 			"program": "PhotoCrawler.py",
-			"externalConsole": true,
-			"debugOptions": [
-				"WaitOnAbnormalExit",
-				"WaitOnNormalExit"
-			]
+
 		},
 		{
 			"name": "Django",
-			"type": "python",
+			"type": "debugpy",
 			"request": "launch",
 			"stopOnEntry": true,
 			"program": "${workspaceRoot}/manage.py",
@@ -46,12 +38,7 @@
 				"runserver",
 				"--noreload"
 			],
-			"debugOptions": [
-				"WaitOnAbnormalExit",
-				"WaitOnNormalExit",
-				"RedirectOutput",
-				"DjangoDebugging"
-			]
+
 		}
 	]
 }
