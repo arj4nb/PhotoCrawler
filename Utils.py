@@ -116,19 +116,47 @@ def ComputeFileHash(filepath):
 
 #from Pillow: https://pillow.readthedocs.io/en/stable/handbook/overview.html#image-archives
 def GetDateCreated(image_path):
+    """Get Content Created date from EXIF data, checking multiple tags."""
     try:
         image = Image.open(image_path)
         exifdata = image._getexif()
         
         if exifdata:
-            for tag_id, value in exifdata.items():
-                tag = TAGS.get(tag_id, tag_id)
-                if tag == 'DateTimeOriginal':
-                    return value
+            # Priority order: DateTimeOriginal > DateTimeDigitized > DateTime
+            date_tags = [
+                ('DateTimeOriginal', 36867),
+                ('DateTimeDigitized', 36868),
+                ('DateTime', 306)
+            ]
+            
+            for tag_name, tag_id in date_tags:
+                if tag_id in exifdata:
+                    return exifdata[tag_id]
     except Exception as e:
         LOG('ERROR', f"Error reading EXIF data from {image_path}: {str(e)}", exc_info=True)
     return None     
 
+
+def ParseExifDateString(exif_date_string):
+    """Parse EXIF date string to Unix timestamp.
+    
+    Args:
+        exif_date_string: Date string in format "YYYY:MM:DD HH:MM:SS"
+    
+    Returns:
+        Unix timestamp as float, or None if parsing fails
+    """
+    try:
+        from datetime import datetime
+        # EXIF format uses colons in date: "YYYY:MM:DD HH:MM:SS"
+        date_part, time_part = exif_date_string.split(' ', 1)
+        date_part = date_part.replace(':', '-')  # Convert to "YYYY-MM-DD"
+        dt_string = f"{date_part} {time_part}"
+        dt = datetime.strptime(dt_string, "%Y-%m-%d %H:%M:%S")
+        return time.mktime(dt.timetuple())
+    except Exception as e:
+        LOG('DEBUG', f"Failed to parse EXIF date string '{exif_date_string}': {str(e)}")
+        return None
 
 
 #copy image to new folder. retain timestamps and basename
@@ -191,8 +219,18 @@ def AddPhoto(path, filename, timestamp_float):
         LOG('WARNING', f"Skipping {fullpath} (already in database)")
         return
 
+    # Try to get EXIF date for better organization
+    exif_date_string = GetDateCreated(fullpath)
+    organization_timestamp = timestamp_float  # Default to file mtime
+    
+    if exif_date_string:
+        exif_timestamp = ParseExifDateString(exif_date_string)
+        if exif_timestamp:
+            organization_timestamp = exif_timestamp
+            LOG('DEBUG', f"Using EXIF date for organization: {exif_date_string}")
+
     # organize pictures into nicer paths based on date
-    structured_path = OrganizePath(fullpath, timestamp_float)
+    structured_path = OrganizePath(fullpath, organization_timestamp)
 
     MakeSurePathExists(structured_path)
 
