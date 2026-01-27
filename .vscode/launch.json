@@ -6,7 +6,18 @@
 			"type": "python",
 			"request": "launch",
 			"stopOnEntry": false,
-			"program": "${file}",
+			"program": "PhotoCrawler.py",
+			"args": [
+				"--scan-path",
+				"/Users/arjan.brussee/PhotoTest",
+				"--output-path",
+				"/Users/arjan.brussee/PhotoExportTest",
+				"--temp-path",
+				"/Users/arjan.brussee/PhotoExportTest/Temp",
+				"--database-path",
+				"/Users/arjan.brussee/PhotoExportTest/Database",
+				"--debug"
+			],
 			"debugOptions": [
 				"WaitOnAbnormalExit",
 				"WaitOnNormalExit",
@@ -18,7 +29,7 @@
 			"type": "python",
 			"request": "launch",
 			"stopOnEntry": false,
-			"program": "${file}",
+			"program": "PhotoCrawler.py",
 			"externalConsole": true,
 			"debugOptions": [
 				"WaitOnAbnormalExit",

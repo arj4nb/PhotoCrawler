@@ -33,7 +33,7 @@ def LOG(level, message, exc_info=False):
         elif level_upper == 'ERROR':
             gLogger.error(message, exc_info=exc_info)
     
-    print(f"{level_upper}: {message}")
+    #print(f"{level_upper}: {message}")
 
 
 def NormalizePath(path):
@@ -115,20 +115,48 @@ def ComputeFileHash(filepath):
         return None
 
 #from Pillow: https://pillow.readthedocs.io/en/stable/handbook/overview.html#image-archives
-def GetDateCreated(image_path):
+def GetEXIFDateCreated(image_path):
+    """Get Content Created date from EXIF data, checking multiple tags."""
     try:
-        image = Image.open(image_path)
-        exifdata = image._getexif()
-        
-        if exifdata:
-            for tag_id, value in exifdata.items():
-                tag = TAGS.get(tag_id, tag_id)
-                if tag == 'DateTimeOriginal':
-                    return value
+        with Image.open(image_path) as image:
+            exifdata = image._getexif()
+            
+            if exifdata:
+                # Priority order: DateTimeOriginal > DateTimeDigitized > DateTime
+                date_tags = [
+                    ('DateTimeOriginal', 36867),
+                    ('DateTimeDigitized', 36868),
+                    ('DateTime', 306)
+                ]
+                
+                for tag_name, tag_id in date_tags:
+                    if tag_id in exifdata:
+                        return exifdata[tag_id]
     except Exception as e:
         LOG('ERROR', f"Error reading EXIF data from {image_path}: {str(e)}", exc_info=True)
     return None     
 
+
+def ParseExifDateString(exif_date_string):
+    """Parse EXIF date string to Unix timestamp.
+    
+    Args:
+        exif_date_string: Date string in format "YYYY:MM:DD HH:MM:SS"
+    
+    Returns:
+        Unix timestamp as float, or None if parsing fails
+    """
+    try:
+        from datetime import datetime
+        # EXIF format uses colons in date: "YYYY:MM:DD HH:MM:SS"
+        date_part, time_part = exif_date_string.split(' ', 1)
+        date_part = date_part.replace(':', '-')  # Convert to "YYYY-MM-DD"
+        dt_string = f"{date_part} {time_part}"
+        dt = datetime.strptime(dt_string, "%Y-%m-%d %H:%M:%S")
+        return time.mktime(dt.timetuple())
+    except Exception as e:
+        LOG('DEBUG', f"Failed to parse EXIF date string '{exif_date_string}': {str(e)}")
+        return None
 
 
 #copy image to new folder. retain timestamps and basename
@@ -147,6 +175,10 @@ def IsImageFile(filename):
 #is this a zipfile    
 def IsZipFile(filename):
     return filename.lower().endswith('zip')
+
+def IsPhotosLibraryPackage(path):
+    """Check if a path is an Apple Photos library package."""
+    return path.lower().endswith('.photoslibrary') and os.path.isdir(path)
 
 #see if we actually want to parse this folder, iphoto libraries have all kind of junk
 def IsValidSubDirectory(filename):
@@ -183,11 +215,24 @@ def AddPhoto(path, filename, timestamp_float):
 
     # check if photo already exists in database
     if settings.gDatabase.PhotoExists(filename, file_hash):
+        settings.gSkippedDatabaseCount += 1
         LOG('WARNING', f"Skipping {fullpath} (already in database)")
         return
 
+    organization_timestamp = timestamp_float  # Default to file mtime
+
+    # Try to get EXIF date for better organization (only for supported formats)
+    file_ext = os.path.splitext(filename)[1].lstrip('.').lower()
+    if file_ext in settings.gExifImageExtensions:
+        exif_date_string = GetEXIFDateCreated(fullpath)
+        if exif_date_string:
+            exif_timestamp = ParseExifDateString(exif_date_string)
+            if exif_timestamp:
+                organization_timestamp = exif_timestamp
+                LOG('DEBUG', f"Using EXIF date for organization: {exif_date_string}")
+
     # organize pictures into nicer paths based on date
-    structured_path = OrganizePath(fullpath, timestamp_float)
+    structured_path = OrganizePath(fullpath, organization_timestamp)
 
     MakeSurePathExists(structured_path)
 
