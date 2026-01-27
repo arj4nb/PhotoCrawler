@@ -6,7 +6,7 @@ from Utils import *
 
 def AnalyzeIphotoFolder(path):
     try:
-        LOG('INFO', f"Processing Apple Photos library: {path}")
+        LOG('DEBUG', f"Processing Apple Photos library path : {path}")
         for entry in os.scandir(path):
             if entry.is_dir() and IsValidSubDirectory(entry.path):
                 AnalyzeIphotoFolder(entry.path)

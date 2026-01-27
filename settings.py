@@ -3,7 +3,8 @@
 gOutputPath = "/path/to/output"
 gTempPath = "/path/to/temp"
 gDatabasePath = None  # Database directory path (defaults to gOutputPath if not set)
-gImageExtensions = ["jpg", "jpeg", "png", "tif", "tiff", "gif", "bmp", "heic", "heif", "mov", "mp4", "m4v", "m4a", "m4b", "m4p", "m4v", "m4a", "m4b", "m4p", "cr2"]
+gImageExtensions = ["jpg", "jpeg", "png", "tif", "tiff", "gif", "bmp", "heic", "heif", "mov", "mp4", "m4v", "m4a", "m4b", "m4p", "m4v", "m4a", "m4b", "m4p", "cr2", "nef"]
+gExifImageExtensions = ["jpg", "jpeg", "tif", "tiff", "heic", "heif", "mov", "mp4", "m4v", "m4a", "m4b", "m4p", "m4v", "m4a", "m4b", "m4p", "cr2", "nef"]
 gIgnoreFolders = ["__MACOSX", "Data.noindex", ".Trash", "Caches", "Thumbnails", "com.apple.AddressBook.", "Library/Containers", "Application Support"]
 gDatabase = None
 

@@ -115,23 +115,23 @@ def ComputeFileHash(filepath):
         return None
 
 #from Pillow: https://pillow.readthedocs.io/en/stable/handbook/overview.html#image-archives
-def GetDateCreated(image_path):
+def GetEXIFDateCreated(image_path):
     """Get Content Created date from EXIF data, checking multiple tags."""
     try:
-        image = Image.open(image_path)
-        exifdata = image._getexif()
-        
-        if exifdata:
-            # Priority order: DateTimeOriginal > DateTimeDigitized > DateTime
-            date_tags = [
-                ('DateTimeOriginal', 36867),
-                ('DateTimeDigitized', 36868),
-                ('DateTime', 306)
-            ]
+        with Image.open(image_path) as image:
+            exifdata = image._getexif()
             
-            for tag_name, tag_id in date_tags:
-                if tag_id in exifdata:
-                    return exifdata[tag_id]
+            if exifdata:
+                # Priority order: DateTimeOriginal > DateTimeDigitized > DateTime
+                date_tags = [
+                    ('DateTimeOriginal', 36867),
+                    ('DateTimeDigitized', 36868),
+                    ('DateTime', 306)
+                ]
+                
+                for tag_name, tag_id in date_tags:
+                    if tag_id in exifdata:
+                        return exifdata[tag_id]
     except Exception as e:
         LOG('ERROR', f"Error reading EXIF data from {image_path}: {str(e)}", exc_info=True)
     return None     
@@ -219,15 +219,17 @@ def AddPhoto(path, filename, timestamp_float):
         LOG('WARNING', f"Skipping {fullpath} (already in database)")
         return
 
-    # Try to get EXIF date for better organization
-    exif_date_string = GetDateCreated(fullpath)
     organization_timestamp = timestamp_float  # Default to file mtime
-    
-    if exif_date_string:
-        exif_timestamp = ParseExifDateString(exif_date_string)
-        if exif_timestamp:
-            organization_timestamp = exif_timestamp
-            LOG('DEBUG', f"Using EXIF date for organization: {exif_date_string}")
+
+    # Try to get EXIF date for better organization (only for supported formats)
+    file_ext = os.path.splitext(filename)[1].lstrip('.').lower()
+    if file_ext in settings.gExifImageExtensions:
+        exif_date_string = GetEXIFDateCreated(fullpath)
+        if exif_date_string:
+            exif_timestamp = ParseExifDateString(exif_date_string)
+            if exif_timestamp:
+                organization_timestamp = exif_timestamp
+                LOG('DEBUG', f"Using EXIF date for organization: {exif_date_string}")
 
     # organize pictures into nicer paths based on date
     structured_path = OrganizePath(fullpath, organization_timestamp)
