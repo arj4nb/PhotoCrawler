@@ -176,9 +176,7 @@ def IsImageFile(filename):
 def IsZipFile(filename):
     return filename.lower().endswith('zip')
 
-def IsPhotosLibraryPackage(path):
-    """Check if a path is an Apple Photos library package."""
-    return path.lower().endswith('.photoslibrary') and os.path.isdir(path)
+
 
 #see if we actually want to parse this folder, iphoto libraries have all kind of junk
 def IsValidSubDirectory(filename):

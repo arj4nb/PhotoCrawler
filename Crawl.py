@@ -10,7 +10,7 @@ def AnalyzeFolder(path):
     try:
         for entry in os.scandir(path):
             # print("Found entry ", entry.path)
-            if IsPhotosLibraryPackage(entry.path):
+            if IPhotoLibrary.IsPhotosLibraryPackage(entry.path) != IPhotoLibrary.IPhotoLibraryVersion.NONE:
                 IPhotoLibrary.AnalyzeIphotoFolder(entry.path)
             elif entry.is_dir() and IsValidSubDirectory(entry.path):
                 AnalyzeFolder(entry.path)

@@ -1,7 +1,29 @@
 import os
 import sys
 import settings
+from enum import Enum
 from Utils import *
+
+class IPhotoLibraryVersion(Enum):
+    NONE = 0
+    OLD = 1
+    MODERN = 2
+
+def IsPhotosLibraryPackage(path):
+    """Check if a path is an Apple Photos library package."""
+    if os.path.isdir(path):
+        if path.lower().endswith('.photoslibrary'):
+            LOG('DEBUG', f"Found modern iPhoto library: {entry.path}")
+            return IPhotoLibraryVersion.MODERN
+        try:
+            LOG('DEBUG', f"Checking if path contains iPhoto files : {path}")
+            for entry in os.scandir(path):
+                if entry.name.lower().endswith('.iPhoto'):
+                    LOG('DEBUG', f"Found old iPhoto library: {entry.path}")
+                    return IPhotoLibraryVersion.OLD
+        except Exception as e:
+            LOG('ERROR', f"Error scanning {path}: {str(e)}", exc_info=True)
+    return IPhotoLibraryVersion.NONE
 
 
 def AnalyzeIphotoFolder(path):
