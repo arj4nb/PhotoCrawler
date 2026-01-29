@@ -119,6 +119,7 @@ def GetEarliestDateCreatedFromExif(image_path):
     """Get Content Created date from EXIF data by checking date/time tags and returning the earliest valid timestamp.
     
     Only checks known date/time EXIF tags: 306 (DateTime), 36867 (DateTimeOriginal), 36868 (DateTimeDigitized).
+    For TIFF-based files (CR2, NEF, TIF, TIFF), uses custom binary parser first for reliable EXIF reading.
     
     Args:
         image_path: Path to the image file
@@ -126,6 +127,10 @@ def GetEarliestDateCreatedFromExif(image_path):
     Returns:
         Unix timestamp as float of the earliest valid date found, or None if no valid dates found
     """
+    # TIFF-based formats: use custom parser first (Pillow may not read EXIF reliably for RAW/some TIFF)
+    if image_path.lower().endswith(TIFF_BASED_EXIF_EXTENSIONS):
+        return GetTiffBasedExifPhotoTakenTime(image_path)
+
     try:
         with Image.open(image_path) as image:
             exifdata = image._getexif()
@@ -166,7 +171,7 @@ def GetEarliestDateCreatedFromExif(image_path):
                 return earliest
             
     except Exception as e:
-        LOG('ERROR', f"Error reading EXIF data from {image_path}: {str(e)}", exc_info=True)
+        LOG('WARNING', f"No EXIF data in {image_path}: {str(e)}", exc_info=True)
     return None     
 
 
@@ -192,6 +197,148 @@ def ParseExifDateString(exif_date_string):
         return None
 
 
+# TIFF-based EXIF reading (CR2, NEF, TIF, TIFF) - parse binary structure to extract date/time
+# EXIF date tag IDs: 306=DateTime, 36867=DateTimeOriginal, 36868=DateTimeDigitized
+EXIF_TAG_DATETIME = 306
+EXIF_TAG_DATETIME_ORIGINAL = 36867
+EXIF_TAG_DATETIME_DIGITIZED = 36868
+EXIF_IFD_POINTER_TAG = 34665  # 0x8769, points to EXIF sub-IFD
+TIFF_TYPE_ASCII = 2
+TIFF_TYPE_LONG = 4
+
+# File extensions that use TIFF-based structure (EXIF in IFD/Exif IFD)
+TIFF_BASED_EXIF_EXTENSIONS = ('.cr2', '.nef', '.tif', '.tiff')
+
+
+def GetTiffBasedExifPhotoTakenTime(file_path):
+    """Read EXIF from a TIFF-based image file and return the time the photo was taken.
+    
+    Handles CR2 (Canon RAW), NEF (Nikon RAW), TIF, and TIFF. Parses the TIFF structure
+    to find the EXIF IFD and extract date/time tags. Returns the earliest valid timestamp
+    found among DateTimeOriginal, DateTimeDigitized, DateTime.
+    
+    Args:
+        file_path: Path to the file (.cr2, .nef, .tif, .tiff)
+        
+    Returns:
+        Unix timestamp as float, or None if not found or on error
+    """
+    date_tag_ids = [EXIF_TAG_DATETIME_ORIGINAL, EXIF_TAG_DATETIME_DIGITIZED, EXIF_TAG_DATETIME]
+    
+    try:
+        with open(file_path, 'rb') as f:
+            data = f.read(1024 * 1024)  # Read first 1MB; EXIF is near start
+        
+        if len(data) < 8:
+            return None
+        
+        # TIFF header: byte order (2), magic 42 (2), offset to first IFD (4)
+        if data[0:2] == b'II':
+            little_endian = True
+        elif data[0:2] == b'MM':
+            little_endian = False
+        else:
+            return None
+        
+        if little_endian:
+            def read16(offset):
+                return data[offset] | (data[offset + 1] << 8)
+            def read32(offset):
+                return (data[offset] | (data[offset + 1] << 8) |
+                        (data[offset + 2] << 16) | (data[offset + 3] << 24))
+        else:
+            def read16(offset):
+                return (data[offset] << 8) | data[offset + 1]
+            def read32(offset):
+                return ((data[offset] << 24) | (data[offset + 1] << 16) |
+                        (data[offset + 2] << 8) | data[offset + 3])
+        
+        if read16(2) != 42:
+            return None
+        
+        ifd0_offset = read32(4)
+        if ifd0_offset >= len(data):
+            return None
+        
+        # Get EXIF IFD offset from IFD0 (tag 34665)
+        exif_ifd_offset = _ReadIfdForTag(data, ifd0_offset, EXIF_IFD_POINTER_TAG, read16, read32, little_endian)
+        if exif_ifd_offset is None:
+            return None
+        
+        # Read date/time tags from EXIF IFD (values may be inline or at offset)
+        valid_timestamps = []
+        for tag_id in date_tag_ids:
+            value = _ReadAsciiTagFromIfd(data, exif_ifd_offset, tag_id, read16, read32, little_endian)
+            if value:
+                ts = ParseExifDateString(value)
+                if ts is not None:
+                    valid_timestamps.append(ts)
+        
+        if valid_timestamps:
+            return min(valid_timestamps)
+        return None
+        
+    except Exception as e:
+        LOG('DEBUG', f"Error reading TIFF-based EXIF from {file_path}: {str(e)}")
+        return None
+
+
+def _ReadIfdForTag(data, ifd_offset, tag_id, read16, read32, little_endian):
+    """Read an IFD and return the value/offset for the given tag (for LONG type, e.g. EXIF IFD pointer)."""
+    if ifd_offset + 2 > len(data):
+        return None
+    num_entries = read16(ifd_offset)
+    for i in range(num_entries):
+        entry_offset = ifd_offset + 2 + i * 12
+        if entry_offset + 12 > len(data):
+            return None
+        entry_tag = read16(entry_offset)
+        if entry_tag == tag_id:
+            # Type 4 LONG, count 1 -> value in bytes 8-11
+            return read32(entry_offset + 8)
+    return None
+
+
+def _ReadAsciiTagFromIfd(data, ifd_offset, tag_id, read16, read32, little_endian):
+    """Read an ASCII tag from an IFD. Returns the string value or None."""
+    if ifd_offset + 2 > len(data):
+        return None
+    num_entries = read16(ifd_offset)
+    for i in range(num_entries):
+        entry_offset = ifd_offset + 2 + i * 12
+        if entry_offset + 12 > len(data):
+            return None
+        entry_tag = read16(entry_offset)
+        entry_type = read16(entry_offset + 2)
+        entry_count = read32(entry_offset + 4)
+        entry_value_or_offset = read32(entry_offset + 8)
+        
+        if entry_tag != tag_id or entry_type != TIFF_TYPE_ASCII or entry_count == 0:
+            continue
+        
+        # ASCII: count includes null terminator; value inline if count <= 4 else at offset
+        if entry_count <= 4:
+            # Value stored in the 4-byte value field
+            start = entry_offset + 8
+            end = min(start + entry_count, len(data))
+            raw = data[start:end]
+        else:
+            # Value at offset
+            start = entry_value_or_offset
+            end = min(start + entry_count, len(data))
+            if start >= len(data):
+                return None
+            raw = data[start:end]
+        
+        try:
+            s = raw.decode('ascii', errors='ignore').strip('\x00').strip()
+            if s and len(s) >= 19:  # "YYYY:MM:DD HH:MM:SS"
+                return s
+        except Exception:
+            pass
+    return None
+
+
 #copy image to new folder. retain timestamps and basename
 def CopyImage(filename, destinationpath, new_filename=None):
     """Copy image file to destination path.
@@ -204,7 +351,12 @@ def CopyImage(filename, destinationpath, new_filename=None):
     if new_filename is None:
         new_filename = os.path.basename(filename)
     destname = os.path.join(destinationpath, new_filename)
-    shutil.copy2(filename, destname)
+    try:
+        shutil.copy2(filename, destname)
+    except Exception as e:
+        LOG('ERROR', f"Error copying {filename} to {destname}: {str(e)}", exc_info=True)
+        return False
+    return True
 
 def IsImageFile(filename):
     lowered_filename = filename.lower()
@@ -311,8 +463,9 @@ def AddPhoto(fullpath, new_filename, timestamp_float):
     
     # copy image in a structured location (only if should_copy is True)
     if should_copy:
-        CopyImage(fullpath, structured_path, new_filename)
-        # add to database with hash
-        settings.gDatabase.AddPhoto(new_filename, fullpath, timestamp_float, file_hash)
+        if CopyImage(fullpath, structured_path, new_filename):
+            # add to database with hash
+            if settings.gDatabase.AddPhoto(new_filename, fullpath, timestamp_float, file_hash):
+                LOG('DEBUG', f"Copied {fullpath} to {structured_path} and inserted into database")
     else:
         LOG('DEBUG', f"Not copying {fullpath} - existing file is better")

@@ -49,7 +49,7 @@ def ProcessPhotosLibrary(library_path):
     if version == IPhotoLibraryVersion.OLD:
         LOG('WARNING', f"Old iPhoto libraries are not fully supported by osxphotos: {library_path}")
         # Could fallback to old implementation if needed
-        return
+        #return
     
     # Process modern Photos library using osxphotos
     try:
