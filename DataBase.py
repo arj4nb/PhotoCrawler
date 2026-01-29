@@ -66,11 +66,11 @@ class DataBase:
 
 	def AddPhoto(self, in_name, in_filename, in_timestamp, in_hash):
 		# LOG('DEBUG', f"Adding photo to database: {in_filename} (hash: {in_hash[:16]}...)")
-		
 		try:
 			table = self.db['photos']
 			table.insert(dict(name=in_name, filename=in_filename, timestamp=in_timestamp, hash=in_hash))
-			LOG('DEBUG', f"Photo added successfully: {in_filename}")
+			# LOG('DEBUG', f"Photo added successfully: {in_filename}")
+			return True
 		except sqlite3.IntegrityError as e:
 			error_msg = f"Database integrity error adding photo {in_filename}: {str(e)}"
 			LOG('WARNING', error_msg)
@@ -88,6 +88,7 @@ class DataBase:
 			error_msg = f"Unexpected error adding photo {in_filename}: {str(e)}"
 			LOG('ERROR', error_msg, exc_info=True)
 			raise
+		return False
 
 	def FindPhoto(self, in_filename):
 		"""Find a photo by filename in the database."""
@@ -96,7 +97,7 @@ class DataBase:
 		try:
 			table = self.db['photos']
 			result = table.find(filename=in_filename)
-			LOG('DEBUG', f"Photo lookup completed for: {in_filename}")
+			# LOG('DEBUG', f"Photo lookup completed for: {in_filename}")
 			return result
 		except sqlite3.OperationalError as e:
 			error_msg = f"Database operational error finding photo {in_filename}: {str(e)}"
