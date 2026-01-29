@@ -1,9 +1,10 @@
 
 import os
+import re
 import shutil
 import settings
 import time
-import hashlib
+import xxhash
 import logging
 from datetime import datetime, timezone
 from PIL import Image
@@ -102,16 +103,78 @@ def MakeDirectorySafe(path):
     MakeSurePathExists(path)
 
 def ComputeFileHash(filepath):
-    """Compute MD5 hash of a file for duplicate detection."""
+    """Compute full xxHash (xxh64) of a file for duplicate detection.
+    
+    Uses xxHash which is 3-5x faster than MD5 while providing excellent
+    hash distribution for duplicate detection purposes.
+    
+    Note: For most use cases, prefer ComputeQuickFileHash() which is much faster
+    and provides excellent duplicate detection for photo files.
+    """
     try:
-        hash_md5 = hashlib.md5()
+        hasher = xxhash.xxh64()
         with open(filepath, "rb") as f:
             # Read file in chunks to handle large files efficiently
             for chunk in iter(lambda: f.read(4096), b""):
-                hash_md5.update(chunk)
-        return hash_md5.hexdigest()
+                hasher.update(chunk)
+        return hasher.hexdigest()
     except Exception as e:
         LOG('ERROR', f"Error computing hash for {filepath}: {str(e)}", exc_info=True)
+        return None
+
+
+# Default chunk size for partial hashing (64KB)
+QUICK_HASH_CHUNK_SIZE = 65536
+
+
+def ComputeQuickFileHash(filepath, chunk_size=QUICK_HASH_CHUNK_SIZE):
+    """Compute a quick hash of a file for fast duplicate detection.
+    
+    Uses xxHash (xxh64) with file size plus first and last chunks for identification.
+    xxHash is 3-5x faster than MD5 while providing excellent hash distribution.
+    
+    This is much faster than hashing the entire file while still providing
+    excellent duplicate detection for photos (collisions are extremely rare).
+    
+    Performance: For a 50MB RAW file, this reads ~128KB instead of 50MB,
+    reducing I/O by ~400x. Combined with xxHash, total speedup is significant.
+    
+    For files smaller than 2*chunk_size (128KB by default), reads the entire file.
+    
+    Args:
+        filepath: Path to the file
+        chunk_size: Size of chunks to read from start and end (default 64KB)
+        
+    Returns:
+        Hash string or None on error
+    """
+    try:
+        file_stat = os.stat(filepath)
+        file_size = file_stat.st_size
+        
+        hasher = xxhash.xxh64()
+        
+        # Include file size in the hash for extra collision resistance
+        # Using a prefix to ensure size doesn't collide with file content
+        hasher.update(f"quickhash:size={file_size}:".encode('utf-8'))
+        
+        with open(filepath, "rb") as f:
+            if file_size <= chunk_size * 2:
+                # Small file - read the whole thing (same as full hash for small files)
+                hasher.update(f.read())
+            else:
+                # Read first chunk
+                first_chunk = f.read(chunk_size)
+                hasher.update(first_chunk)
+                
+                # Seek to last chunk and read
+                f.seek(-chunk_size, 2)  # 2 = SEEK_END
+                last_chunk = f.read(chunk_size)
+                hasher.update(last_chunk)
+        
+        return hasher.hexdigest()
+    except Exception as e:
+        LOG('ERROR', f"Error computing quick hash for {filepath}: {str(e)}", exc_info=True)
         return None
 
 #from Pillow: https://pillow.readthedocs.io/en/stable/handbook/overview.html#image-archives
@@ -193,7 +256,7 @@ def ParseExifDateString(exif_date_string):
         dt = datetime.strptime(dt_string, "%Y-%m-%d %H:%M:%S")
         return time.mktime(dt.timetuple())
     except Exception as e:
-        LOG('DEBUG', f"Failed to parse EXIF date string '{exif_date_string}': {str(e)}")
+        # LOG('DEBUG', f"Failed to parse EXIF date string '{exif_date_string}': {str(e)}")
         return None
 
 
@@ -394,78 +457,109 @@ def OrganizePath(path, timestamp_float):
     return newpath
 
 
-def AddPhoto(fullpath, new_filename, timestamp_float):
+def AddPhoto(in_fullpath, in_filename, in_timestamp_float):
     """Add a photo to the library.
     
     Args:
-        fullpath: Full path to the source image file
-        new_filename: Filename to use when copying (may be original filename from database)
-        timestamp_float: Timestamp to use for organization
+        in_fullpath: Full path to the source image file
+        infilename: Filename to use when copying (may be original filename from database)
+        in_timestamp_float: Timestamp to use for organization
+        
+    Performance optimization: This function orders operations from cheapest to most expensive:
+    1. Regex check for face crops (no I/O)
+    2. Quick database lookup by source path (fast indexed query)
+    3. File hash computation (only if needed - reads entire file)
+    4. EXIF reading (only if file will be processed)
     """
     # LOG('DEBUG', f"AddPhoto: {fullpath} (new filename: {new_filename})")
 
-    # compute file hash for duplicate detection
-    file_hash = ComputeFileHash(fullpath)
+    # === CHEAP CHECK 1: Skip face crop images (regex only, no I/O) ===
+    if re.search(r'_face\d+', in_filename, re.IGNORECASE):
+        LOG('DEBUG', f"Skipping face crop image: {in_filename}")
+        return
+
+    # === CHEAP CHECK 2: Quick lookup by source path (indexed DB query) ===
+    # This avoids computing the expensive file hash for files already processed
+    # from the same source location (common when re-running crawler)
+    existing_by_path = settings.gDatabase.FindPhotoBySourcePath(in_fullpath)
+    if existing_by_path is not None:
+        # File was already imported from this exact source path
+        # Check if the destination file still exists
+        if os.path.exists(existing_by_path['filename']):
+            settings.gSkippedDatabaseCount += 1
+            LOG('DEBUG', f"Skipping {in_fullpath} (already imported from same source)")
+            return
+
+    # === FAST OPERATION: Compute quick file hash for duplicate detection ===
+    # Uses partial hashing (first+last 64KB + size) instead of reading entire file
+    # This reduces I/O by ~400x for large RAW files while maintaining excellent accuracy
+    file_hash = ComputeQuickFileHash(in_fullpath)
     if file_hash is None:
-        LOG('ERROR', f"Skipping {fullpath} (failed to compute hash)")
+        LOG('ERROR', f"Skipping {in_fullpath} (failed to compute hash)")
         return
 
-    # check if photo already exists in database
-    if settings.gDatabase.PhotoExists(new_filename, file_hash):
-        settings.gSkippedDatabaseCount += 1
-        LOG('WARNING', f"Skipping {fullpath} (already in database)")
-        return
+    # === Check if photo with same content exists (different source path, same file) ===
+    photo_attributes = settings.gDatabase.GetPhotoAttributesByHash(file_hash)
 
-    organization_timestamp = timestamp_float  # Default to file mtime
+    if photo_attributes is not None:
+        # Photo with same hash exists - check if destination file exists
+        if os.path.exists(photo_attributes['filename']):
+            settings.gSkippedDatabaseCount += 1
+            LOG('WARNING', f"Skipping {in_fullpath} (duplicate content already in database)")
+            return
 
-    # Try to get EXIF date for better organization (only for supported formats)
-    file_ext = os.path.splitext(new_filename)[1].lstrip('.').lower()
+    # === EXPENSIVE OPERATION: Read EXIF for organization timestamp ===
+    # Only performed after confirming file needs to be processed
+    organization_timestamp = in_timestamp_float  # Default to file mtime
+
+    file_ext = os.path.splitext(in_filename)[1].lstrip('.').lower()
     if file_ext in settings.gExifImageExtensions:
-        exif_timestamp = GetEarliestDateCreatedFromExif(fullpath)
+        exif_timestamp = GetEarliestDateCreatedFromExif(in_fullpath)
         if exif_timestamp:
             organization_timestamp = exif_timestamp
-            LOG('DEBUG', f"Using EXIF date for organization: {exif_timestamp}")
+            # LOG('DEBUG', f"Using EXIF date for organization: {exif_timestamp}")
 
     # organize pictures into nicer paths based on date
-    structured_path = OrganizePath(fullpath, organization_timestamp)
+    structured_path = OrganizePath(in_fullpath, organization_timestamp)
 
     MakeSurePathExists(structured_path)
 
     # Check for filename conflict and compare files
-    dest_path = os.path.join(structured_path, new_filename)
+    dest_path = os.path.join(structured_path, in_filename)
     should_copy = True
     
-    if os.path.exists(dest_path):
-        try:
-           
-            # Get file stats for comparison
-            source_stat = os.stat(fullpath)
-            dest_stat = os.stat(dest_path)
+    if photo_attributes is not None: # this case it should be copied for sure
+        if os.path.exists(dest_path): #if there's a file already there, check if the new file is better
+            try:
             
-            source_mtime = source_stat.st_mtime
-            dest_mtime = dest_stat.st_mtime
-            source_size = source_stat.st_size
-            dest_size = dest_stat.st_size
-            
-            # Compare: newer file wins, if same time then larger file wins
-            if dest_mtime > source_mtime:
-                should_copy = False
-                settings.gSkippedBetterCount += 1
-                LOG('WARNING', f"Skipping {fullpath} - existing file {dest_path} is newer")
-            if dest_size >= source_size:
-                should_copy = False
-                settings.gSkippedBetterCount += 1
-                LOG('WARNING', f"Skipping {fullpath} - existing file {dest_path} is larger or equal size")
-        except OSError as e:
-            LOG('ERROR', f"Error comparing files {fullpath} and {dest_path}: {str(e)}", exc_info=True)
-            # On error, proceed with copy to be safe
-            should_copy = True
+                # Get file stats for comparison
+                source_stat = os.stat(in_fullpath)
+                dest_stat = os.stat(dest_path)
+                
+                source_mtime = source_stat.st_mtime
+                dest_mtime = dest_stat.st_mtime
+                source_size = source_stat.st_size
+                dest_size = dest_stat.st_size
+                
+                # Compare: newer file wins, if same time then larger file wins
+                if dest_mtime > source_mtime:
+                    should_copy = False
+                    settings.gSkippedBetterCount += 1
+                    LOG('WARNING', f"Skipping {in_fullpath} - existing file {dest_path} is newer")
+                if dest_size >= source_size:
+                    should_copy = False
+                    settings.gSkippedBetterCount += 1
+                    LOG('WARNING', f"Skipping {in_fullpath} - existing file {dest_path} is larger or equal size")
+            except OSError as e:
+                LOG('ERROR', f"Error comparing files {in_fullpath} and {dest_path}: {str(e)}", exc_info=True)
+                # On error, proceed with copy to be safe
+                should_copy = True
     
     # copy image in a structured location (only if should_copy is True)
     if should_copy:
-        if CopyImage(fullpath, structured_path, new_filename):
+        if CopyImage(in_fullpath, structured_path, in_filename):
             # add to database with hash
-            if settings.gDatabase.AddPhoto(new_filename, fullpath, timestamp_float, file_hash):
-                LOG('DEBUG', f"Copied {fullpath} to {structured_path} and inserted into database")
+            if settings.gDatabase.AddPhoto(in_filename, in_fullpath, in_timestamp_float, file_hash):
+                LOG('DEBUG', f"Added {in_fullpath} to {structured_path}")
     else:
-        LOG('DEBUG', f"Not copying {fullpath} - existing file is better")
+        LOG('DEBUG', f"Not copying {in_fullpath} - existing file is better")

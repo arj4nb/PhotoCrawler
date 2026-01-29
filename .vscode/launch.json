@@ -9,7 +9,7 @@
 			"program": "PhotoCrawler.py",
 			"args": [
 				"--scan-path",
-				"/Users/arjan.brussee/PhotoTest",
+				"/Users/arjan.brussee/tempstorage",
 				"--output-path",
 				"/Users/arjan.brussee/PhotoExportTest",
 				"--temp-path",

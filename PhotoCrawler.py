@@ -98,7 +98,7 @@ def Main():
     from sys import platform as _platform
 
     # Set scan path (default or from argument)
-    scanpath = args.scan_path or os.path.join(userpath, "PhotoTest")
+    scanpath = args.scan_path or os.path.join(userpath, 'Pictures')
     scanpath = ValidatePath(scanpath, "Scan", must_exist=True)
 
     # Set output path (default or from argument)
