@@ -10,3 +10,4 @@ PyYAML==3.11
 scandir==1.2
 six==1.10.0
 SQLAlchemy==1.0.12
+xxhash
